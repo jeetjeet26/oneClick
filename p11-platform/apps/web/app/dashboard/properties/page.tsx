@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { usePropertyContext } from '@/components/layout/PropertyContext'
 import { 
   Building2, 
@@ -11,10 +12,7 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
-  X,
-  Check,
-  AlertCircle,
-  Loader2
+  AlertCircle
 } from 'lucide-react'
 
 type Property = {
@@ -37,29 +35,13 @@ type Property = {
   }
 }
 
-type PropertyFormData = {
-  name: string
-  street: string
-  city: string
-  state: string
-  zip: string
-}
 
 export default function PropertiesPage() {
+  const router = useRouter()
   const { setProperty } = usePropertyContext()
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showModal, setShowModal] = useState(false)
-  const [editingProperty, setEditingProperty] = useState<Property | null>(null)
-  const [formData, setFormData] = useState<PropertyFormData>({
-    name: '',
-    street: '',
-    city: '',
-    state: '',
-    zip: '',
-  })
-  const [submitting, setSubmitting] = useState(false)
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
@@ -88,62 +70,14 @@ export default function PropertiesPage() {
   }, [fetchProperties])
 
   const openCreateModal = () => {
-    setEditingProperty(null)
-    setFormData({ name: '', street: '', city: '', state: '', zip: '' })
-    setShowModal(true)
+    // Navigate to the new comprehensive onboarding wizard
+    router.push('/dashboard/properties/new')
   }
 
-  const openEditModal = (property: Property) => {
-    setEditingProperty(property)
-    setFormData({
-      name: property.name,
-      street: property.address?.street || '',
-      city: property.address?.city || property.settings?.city || '',
-      state: property.address?.state || '',
-      zip: property.address?.zip || '',
-    })
-    setShowModal(true)
+  const openEditProperty = (property: Property) => {
+    // Navigate to the comprehensive edit wizard
+    router.push(`/dashboard/properties/${property.id}/edit`)
     setMenuOpen(null)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitting(true)
-
-    try {
-      const payload = {
-        ...(editingProperty && { id: editingProperty.id }),
-        name: formData.name,
-        address: {
-          street: formData.street,
-          city: formData.city,
-          state: formData.state,
-          zip: formData.zip,
-        },
-        settings: {
-          city: formData.city ? `${formData.city}, ${formData.state}` : undefined,
-        },
-      }
-
-      const response = await fetch('/api/properties', {
-        method: editingProperty ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Operation failed')
-      }
-
-      setShowModal(false)
-      fetchProperties()
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Operation failed')
-    } finally {
-      setSubmitting(false)
-    }
   }
 
   const handleDelete = async (id: string) => {
@@ -276,7 +210,7 @@ export default function PropertiesPage() {
                         />
                         <div className="absolute right-0 mt-1 w-36 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-20">
                           <button
-                            onClick={() => openEditModal(property)}
+                            onClick={() => openEditProperty(property)}
                             className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                           >
                             <Pencil size={14} />
@@ -340,122 +274,6 @@ export default function PropertiesPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {editingProperty ? 'Edit Property' : 'Add New Property'}
-              </h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Property Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                  placeholder="The Reserve at Sandpoint"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Street Address
-                </label>
-                <input
-                  type="text"
-                  value={formData.street}
-                  onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                  placeholder="123 Main Street"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                    placeholder="Sandpoint"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    State
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                    placeholder="ID"
-                    maxLength={2}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  ZIP Code
-                </label>
-                <input
-                  type="text"
-                  value={formData.zip}
-                  onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                  placeholder="83864"
-                  maxLength={10}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 bg-white text-slate-700 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !formData.name}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      {editingProperty ? 'Saving...' : 'Creating...'}
-                    </>
-                  ) : (
-                    <>
-                      <Check size={18} />
-                      {editingProperty ? 'Save Changes' : 'Create Property'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

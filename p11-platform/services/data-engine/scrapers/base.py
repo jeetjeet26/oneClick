@@ -120,11 +120,13 @@ class BaseScraper(ABC):
         self._last_request_time = 0
         
         # Configure HTTP client
-        self.client = httpx.Client(
-            timeout=self.TIMEOUT,
-            follow_redirects=True,
-            proxies={"all://": proxy_url} if proxy_url else None
-        )
+        client_kwargs = {
+            "timeout": self.TIMEOUT,
+            "follow_redirects": True,
+        }
+        if proxy_url:
+            client_kwargs["proxy"] = proxy_url
+        self.client = httpx.Client(**client_kwargs)
     
     def __del__(self):
         """Cleanup HTTP client"""

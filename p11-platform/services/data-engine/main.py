@@ -353,14 +353,293 @@ def get_scraper_status():
     """
     return {
         "proxy_configured": bool(os.environ.get('SCRAPER_PROXY_URL')),
-        "supported_sources": ["apartments_com"],
+        "supported_sources": ["apartments_com", "google_places"],
         "supabase_configured": bool(SUPABASE_URL and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")),
+        "openai_configured": bool(os.environ.get('OPENAI_API_KEY')),
         "features": {
             "auto_discovery": True,
             "price_tracking": True,
-            "alert_generation": True
+            "alert_generation": True,
+            "brand_intelligence": True,
+            "semantic_search": True
         }
     }
+
+
+# =============================================================================
+# BRAND INTELLIGENCE ENDPOINTS
+# =============================================================================
+
+class BrandIntelligenceRequest(BaseModel):
+    property_id: str
+    competitor_ids: Optional[List[str]] = None  # None = all competitors with websites
+    force_refresh: bool = False  # Re-analyze even if recent data exists
+
+
+class SemanticSearchRequest(BaseModel):
+    query: str
+    property_id: Optional[str] = None
+    competitor_ids: Optional[List[str]] = None
+    limit: int = 10
+
+
+class DiscoverAndAnalyzeRequest(BaseModel):
+    property_id: str
+    radius_miles: float = 3.0
+    max_competitors: int = 20
+    auto_add: bool = True
+    extract_brand_intelligence: bool = True
+
+
+@app.post('/scraper/discover-and-analyze', response_model=ScrapeResponse)
+async def discover_and_analyze_competitors(
+    request: DiscoverAndAnalyzeRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Enhanced discovery that also extracts brand intelligence.
+    
+    1. Discovers competitors via Google Places
+    2. Adds them to the database
+    3. Triggers background brand intelligence extraction
+    
+    Returns immediately with discovery results and job_id for polling.
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        result = coordinator.discover_and_analyze_competitors(
+            property_id=request.property_id,
+            radius_miles=request.radius_miles,
+            max_competitors=request.max_competitors,
+            auto_add=request.auto_add,
+            extract_brand_intelligence=request.extract_brand_intelligence
+        )
+        
+        return ScrapeResponse(
+            success=result.get('success', False),
+            message=f"Discovered {result.get('discovered_count', 0)} competitors, added {result.get('added_count', 0)}",
+            data=result
+        )
+        
+    except Exception as e:
+        logger.error(f"Discover and analyze error: {e}")
+        return ScrapeResponse(
+            success=False,
+            message=str(e),
+            data={'error': str(e)}
+        )
+
+
+@app.post('/scraper/brand-intelligence', response_model=ScrapeResponse)
+async def extract_brand_intelligence(
+    request: BrandIntelligenceRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger brand intelligence extraction for competitors.
+    
+    Scrapes competitor websites and uses AI to extract:
+    - Brand positioning and voice
+    - Target audience
+    - Unique selling points
+    - Active specials and promotions
+    - Key messaging themes
+    
+    Returns job_id for status polling.
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        job_id = coordinator.trigger_brand_intelligence_extraction(
+            property_id=request.property_id,
+            competitor_ids=request.competitor_ids,
+            force_refresh=request.force_refresh
+        )
+        
+        return ScrapeResponse(
+            success=True,
+            message="Brand intelligence extraction started",
+            data={
+                'job_id': job_id,
+                'status': 'processing'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Brand intelligence error: {e}")
+        return ScrapeResponse(
+            success=False,
+            message=str(e),
+            data={'error': str(e)}
+        )
+
+
+@app.get('/scraper/brand-intelligence/job/{job_id}')
+async def get_brand_intelligence_job_status(job_id: str):
+    """
+    Get status of a brand intelligence extraction job.
+    
+    Poll this endpoint to track progress:
+    - status: pending/processing/completed/failed
+    - progress: processed_count/total_competitors
+    - errors: any failed extractions
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        coordinator = ScrapingCoordinator()
+        status = coordinator.get_brand_intelligence_job_status(job_id)
+        
+        return {
+            'success': True,
+            **status
+        }
+        
+    except Exception as e:
+        logger.error(f"Job status error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.get('/scraper/brand-intelligence/property/{property_id}')
+async def get_property_brand_intelligence(
+    property_id: str,
+    include_raw: bool = False
+):
+    """
+    Get brand intelligence for all competitors of a property.
+    
+    Returns AI-analyzed insights for each competitor:
+    - Brand voice and personality
+    - Positioning statement
+    - Target audience
+    - Unique selling points
+    - Active specials
+    - Key messaging themes
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        coordinator = ScrapingCoordinator()
+        intelligence = coordinator.get_all_brand_intelligence(
+            property_id=property_id,
+            include_raw=include_raw
+        )
+        
+        return {
+            'success': True,
+            'count': len(intelligence),
+            'competitors': intelligence
+        }
+        
+    except Exception as e:
+        logger.error(f"Get brand intelligence error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.get('/scraper/brand-intelligence/competitor/{competitor_id}')
+async def get_competitor_brand_intelligence(competitor_id: str):
+    """
+    Get brand intelligence for a specific competitor.
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        coordinator = ScrapingCoordinator()
+        intelligence = coordinator.get_competitor_brand_intelligence(competitor_id)
+        
+        if not intelligence:
+            return {
+                'success': False,
+                'error': 'No brand intelligence found for this competitor'
+            }
+        
+        return {
+            'success': True,
+            'data': intelligence
+        }
+        
+    except Exception as e:
+        logger.error(f"Get competitor intelligence error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.post('/scraper/brand-intelligence/search')
+async def semantic_search_competitors(request: SemanticSearchRequest):
+    """
+    Semantic search across competitor website content.
+    
+    Use natural language queries like:
+    - "How do competitors talk about pet policies?"
+    - "What move-in specials are being offered?"
+    - "How do they market their pools?"
+    
+    Returns relevant content chunks with similarity scores.
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        coordinator = ScrapingCoordinator()
+        results = coordinator.semantic_search_competitors(
+            query=request.query,
+            property_id=request.property_id,
+            competitor_ids=request.competitor_ids,
+            limit=request.limit
+        )
+        
+        return {
+            'success': True,
+            'query': request.query,
+            'count': len(results),
+            'results': results
+        }
+        
+    except Exception as e:
+        logger.error(f"Semantic search error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.post('/scraper/brand-intelligence/embeddings/{competitor_id}')
+async def generate_competitor_embeddings(competitor_id: str):
+    """
+    Generate vector embeddings for a competitor's content chunks.
+    Required for semantic search functionality.
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        coordinator = ScrapingCoordinator()
+        count = coordinator.generate_competitor_embeddings(competitor_id)
+        
+        return {
+            'success': True,
+            'embeddings_generated': count
+        }
+        
+    except Exception as e:
+        logger.error(f"Generate embeddings error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 
 if __name__ == "__main__":

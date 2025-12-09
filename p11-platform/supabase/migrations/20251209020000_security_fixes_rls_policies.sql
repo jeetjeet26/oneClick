@@ -83,3 +83,4 @@ CREATE POLICY "documents_service_all" ON public.documents
 ALTER FUNCTION public.execute_readonly_query(TEXT) SET search_path = public;
 ALTER FUNCTION public.match_documents(vector, double precision, integer, uuid) SET search_path = public;
 
+

@@ -237,3 +237,4 @@ export function getAuditActionColor(action: AuditAction): string {
   return colors[action] || 'text-slate-600 bg-slate-50'
 }
 
+

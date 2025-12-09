@@ -11,6 +11,7 @@ import {
   MarketAlertsList,
   CompetitorDetailDrawer
 } from '@/components/marketvision'
+import { BrandIntelligenceDashboard } from '@/components/marketvision/BrandIntelligenceDashboard'
 import {
   Eye,
   TrendingUp,
@@ -21,7 +22,8 @@ import {
   Radar,
   Loader2,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Sparkles
 } from 'lucide-react'
 
 interface Competitor {
@@ -41,7 +43,7 @@ interface Competitor {
   lastScrapedAt: string | null
 }
 
-type TabId = 'overview' | 'competitors' | 'alerts'
+type TabId = 'overview' | 'competitors' | 'brand-intel' | 'alerts'
 
 interface ScrapeStatus {
   isLoading: boolean
@@ -65,7 +67,8 @@ export default function MarketVisionPage() {
   const [discoverSettings, setDiscoverSettings] = useState({
     radiusMiles: 3,
     maxCompetitors: 20,
-    autoAdd: true
+    autoAdd: true,
+    extractBrandIntelligence: true
   })
 
   const handleRefresh = useCallback(() => {
@@ -75,7 +78,10 @@ export default function MarketVisionPage() {
   const handleDiscover = async () => {
     if (!currentProperty?.id) return
 
-    setScrapeStatus({ isLoading: true, message: 'Discovering competitors...', type: 'info' })
+    const message = discoverSettings.extractBrandIntelligence 
+      ? 'Discovering competitors and analyzing brands...'
+      : 'Discovering competitors...'
+    setScrapeStatus({ isLoading: true, message, type: 'info' })
     setShowDiscoverModal(false)
 
     try {
@@ -98,19 +104,34 @@ export default function MarketVisionPage() {
       }
 
       const result = data.result
+      let statusMessage = 'Discovery started in background'
+      
       if (result?.data?.discovered_count !== undefined) {
-        setScrapeStatus({
-          isLoading: false,
-          message: `Found ${result.data.discovered_count} competitors, added ${result.data.added_count} new`,
-          type: 'success'
-        })
-      } else {
-        setScrapeStatus({
-          isLoading: false,
-          message: 'Discovery started in background',
-          type: 'success'
-        })
+        statusMessage = `Found ${result.data.discovered_count} competitors, added ${result.data.added_count} new`
+        
+        // Trigger brand intelligence extraction if enabled and competitors were added
+        if (discoverSettings.extractBrandIntelligence && result.data.added_count > 0) {
+          try {
+            await fetch('/api/marketvision/brand-intelligence', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                propertyId: currentProperty.id,
+                forceRefresh: false
+              })
+            })
+            statusMessage += '. Brand analysis started in background.'
+          } catch (brandErr) {
+            console.error('Brand intelligence error:', brandErr)
+          }
+        }
       }
+
+      setScrapeStatus({
+        isLoading: false,
+        message: statusMessage,
+        type: 'success'
+      })
 
       // Refresh the list after a short delay
       setTimeout(() => {
@@ -223,6 +244,7 @@ export default function MarketVisionPage() {
   const tabs = [
     { id: 'overview' as TabId, label: 'Overview', icon: Eye },
     { id: 'competitors' as TabId, label: 'Competitors', icon: Building2 },
+    { id: 'brand-intel' as TabId, label: 'Brand Intelligence', icon: Sparkles },
     { id: 'alerts' as TabId, label: 'Alerts', icon: Bell }
   ]
 
@@ -375,6 +397,14 @@ export default function MarketVisionPage() {
         />
       )}
 
+      {activeTab === 'brand-intel' && currentProperty?.id && (
+        <BrandIntelligenceDashboard
+          key={`brand-intel-${refreshKey}`}
+          propertyId={currentProperty.id}
+          propertyName={currentProperty.name}
+        />
+      )}
+
       {activeTab === 'alerts' && (
         <MarketAlertsList
           key={`alerts-full-${refreshKey}`}
@@ -492,10 +522,28 @@ export default function MarketVisionPage() {
                 </div>
               </label>
 
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={discoverSettings.extractBrandIntelligence}
+                  onChange={(e) => setDiscoverSettings(s => ({ ...s, extractBrandIntelligence: e.target.checked }))}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                    <Sparkles className="w-4 h-4 text-indigo-500" />
+                    Extract Brand Intelligence
+                  </span>
+                  <p className="text-xs text-gray-500">
+                    Scrape competitor websites for brand positioning, specials, and messaging
+                  </p>
+                </div>
+              </label>
+
               <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
                 <p className="text-sm text-amber-700 dark:text-amber-300">
-                  <strong>Note:</strong> Discovery scrapes Apartments.com for competitor data. 
-                  This may take a few minutes depending on the number of results.
+                  <strong>Note:</strong> Discovery uses Google Places to find competitors. 
+                  Brand intelligence extraction analyzes their websites using AI.
                 </p>
               </div>
             </div>

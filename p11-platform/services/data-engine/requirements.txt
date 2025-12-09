@@ -17,5 +17,11 @@ playwright
 fake-useragent
 tenacity
 
+# AI / LLM
+openai
+
 # Geocoding
 geopy
+
+# Google Maps / Places API
+googlemaps

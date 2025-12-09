@@ -9,7 +9,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlencode, quote
 
-from .base import BaseScraper, ScrapedProperty, ScrapedUnit
+from scrapers.base import BaseScraper, ScrapedProperty, ScrapedUnit
 
 logger = logging.getLogger(__name__)
 
@@ -348,6 +348,32 @@ class ApartmentsComScraper(BaseScraper):
         
         return list(set(amenities))[:30]  # Dedupe and limit
     
+    # State name to abbreviation mapping
+    STATE_ABBREV = {
+        'alabama': 'al', 'alaska': 'ak', 'arizona': 'az', 'arkansas': 'ar',
+        'california': 'ca', 'colorado': 'co', 'connecticut': 'ct', 'delaware': 'de',
+        'florida': 'fl', 'georgia': 'ga', 'hawaii': 'hi', 'idaho': 'id',
+        'illinois': 'il', 'indiana': 'in', 'iowa': 'ia', 'kansas': 'ks',
+        'kentucky': 'ky', 'louisiana': 'la', 'maine': 'me', 'maryland': 'md',
+        'massachusetts': 'ma', 'michigan': 'mi', 'minnesota': 'mn', 'mississippi': 'ms',
+        'missouri': 'mo', 'montana': 'mt', 'nebraska': 'ne', 'nevada': 'nv',
+        'new hampshire': 'nh', 'new jersey': 'nj', 'new mexico': 'nm', 'new york': 'ny',
+        'north carolina': 'nc', 'north dakota': 'nd', 'ohio': 'oh', 'oklahoma': 'ok',
+        'oregon': 'or', 'pennsylvania': 'pa', 'rhode island': 'ri', 'south carolina': 'sc',
+        'south dakota': 'sd', 'tennessee': 'tn', 'texas': 'tx', 'utah': 'ut',
+        'vermont': 'vt', 'virginia': 'va', 'washington': 'wa', 'west virginia': 'wv',
+        'wisconsin': 'wi', 'wyoming': 'wy', 'district of columbia': 'dc'
+    }
+    
+    def _normalize_state(self, state: str) -> str:
+        """Convert full state name to abbreviation"""
+        state_lower = state.lower().strip()
+        # If already abbreviated, return as-is
+        if len(state_lower) == 2:
+            return state_lower
+        # Look up in mapping
+        return self.STATE_ABBREV.get(state_lower, state_lower)
+    
     def search_by_location(
         self, 
         city: str, 
@@ -356,7 +382,12 @@ class ApartmentsComScraper(BaseScraper):
         max_results: int = 50
     ) -> List[ScrapedProperty]:
         """Search for properties by city/state"""
-        location = f"{city}-{state}"
+        # Normalize city and state for URL
+        city_slug = city.lower().strip().replace(' ', '-')
+        state_abbrev = self._normalize_state(state)
+        location = f"{city_slug}-{state_abbrev}"
+        
+        logger.info(f"Searching apartments.com for: {location}")
         properties = []
         page = 1
         

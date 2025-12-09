@@ -31,7 +31,7 @@ const QUICK_LINKS: SearchResult[] = [
   { id: 'leads', type: 'page', title: 'TourSpark Leads', url: '/dashboard/leads', icon: Sparkles },
   { id: 'luma', type: 'page', title: 'LumaLeasing Chat', url: '/dashboard/luma', icon: MessageSquare },
   { id: 'bi', type: 'page', title: 'MultiChannel BI', url: '/dashboard/bi', icon: BarChart3 },
-  { id: 'properties', type: 'page', title: 'Properties', url: '/dashboard/properties', icon: Building2 },
+  { id: 'property', type: 'page', title: 'Property', url: '/dashboard/community', icon: Building2 },
 ]
 
 export function GlobalSearch() {

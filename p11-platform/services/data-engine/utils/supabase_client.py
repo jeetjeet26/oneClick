@@ -17,3 +17,6 @@ def get_supabase() -> Client:
         raise ValueError("SUPABASE_SERVICE_ROLE_KEY not found. ETL jobs require service role access for writes.")
         
     return create_client(url, key)
+
+# Alias for backward compatibility
+get_supabase_client = get_supabase

@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         type: 'property',
         title: property.name,
         subtitle: 'Property',
-        url: `/dashboard/properties`,
+        url: `/dashboard/community`,
         meta: 'Property',
       })
     }

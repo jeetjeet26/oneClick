@@ -122,3 +122,35 @@ export async function forgotPassword(
   return { success: true }
 }
 
+export async function resetPassword(
+  prevState: AuthState | null,
+  formData: FormData
+): Promise<AuthState> {
+  const supabase = await createClient()
+
+  const password = formData.get('password') as string
+  const confirmPassword = formData.get('confirmPassword') as string
+
+  if (!password || !confirmPassword) {
+    return { error: 'Both password fields are required' }
+  }
+
+  if (password.length < 8) {
+    return { error: 'Password must be at least 8 characters' }
+  }
+
+  if (password !== confirmPassword) {
+    return { error: 'Passwords do not match' }
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: password,
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true }
+}
+
