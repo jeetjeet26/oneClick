@@ -15,6 +15,7 @@ import {
   RefreshCw
 } from 'lucide-react'
 import { ScheduledReportsList } from '@/components/settings/ScheduledReportsList'
+import { AdAccountConnections } from '@/components/settings/AdAccountConnections'
 
 type SettingsSection = 'organization' | 'notifications' | 'reports' | 'integrations' | 'appearance'
 
@@ -351,37 +352,35 @@ export default function SettingsPage() {
             {activeSection === 'integrations' && (
               <div>
                 <div className="px-6 py-4 border-b border-slate-200">
-                  <h2 className="font-semibold text-slate-900">Integrations</h2>
+                  <h2 className="font-semibold text-slate-900">Ad Platform Integrations</h2>
                   <p className="text-sm text-slate-500 mt-1">
-                    Connect your ad platforms and tools
+                    Link your ad accounts to properties for unified analytics
                   </p>
                 </div>
-                <div className="p-6 space-y-4">
-                  {[
-                    { id: 'meta', label: 'Meta Ads', description: 'Facebook & Instagram advertising', connected: false },
-                    { id: 'google', label: 'Google Ads', description: 'Search and display advertising', connected: false },
-                    { id: 'ga4', label: 'Google Analytics 4', description: 'Website analytics', connected: false },
-                    { id: 'twilio', label: 'Twilio', description: 'SMS messaging (Coming Soon)', connected: false, disabled: true },
-                  ].map(item => (
-                    <div key={item.id} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
-                      <div>
-                        <p className="font-medium text-slate-900">{item.label}</p>
-                        <p className="text-sm text-slate-500">{item.description}</p>
-                      </div>
-                      <button
-                        disabled={item.disabled}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          item.connected
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : item.disabled
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
-                      >
-                        {item.connected ? 'Connected' : item.disabled ? 'Coming Soon' : 'Connect'}
-                      </button>
+                <div className="p-6">
+                  <AdAccountConnections />
+                  
+                  {/* Other Integrations - Coming Soon */}
+                  <div className="mt-8 pt-6 border-t border-slate-200">
+                    <h4 className="text-sm font-medium text-slate-700 mb-4">Other Integrations</h4>
+                    <div className="space-y-3">
+                      {[
+                        { id: 'meta', label: 'Meta Ads', description: 'Facebook & Instagram advertising' },
+                        { id: 'ga4', label: 'Google Analytics 4', description: 'Website analytics' },
+                        { id: 'linkedin', label: 'LinkedIn Ads', description: 'Professional advertising' },
+                      ].map(item => (
+                        <div key={item.id} className="flex items-center justify-between py-2">
+                          <div>
+                            <p className="font-medium text-slate-900">{item.label}</p>
+                            <p className="text-sm text-slate-500">{item.description}</p>
+                          </div>
+                          <span className="px-3 py-1 text-xs bg-slate-100 text-slate-500 rounded-full">
+                            Coming Soon
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             )}

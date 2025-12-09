@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH - Update a draft (approve, reject, edit)
+// PATCH - Update a draft (approve, reject, edit, attach media)
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
@@ -92,7 +92,11 @@ export async function PATCH(request: NextRequest) {
       callToAction,
       scheduledFor,
       rejectionReason,
-      approvedBy
+      approvedBy,
+      // New media attachment fields
+      mediaUrls,
+      mediaType,
+      thumbnailUrl
     } = body
 
     if (!draftId) {
@@ -128,6 +132,11 @@ export async function PATCH(request: NextRequest) {
     if (caption !== undefined) updateData.caption = caption
     if (hashtags !== undefined) updateData.hashtags = hashtags
     if (callToAction !== undefined) updateData.call_to_action = callToAction
+    
+    // Handle media attachment updates
+    if (mediaUrls !== undefined) updateData.media_urls = mediaUrls
+    if (mediaType !== undefined) updateData.media_type = mediaType
+    if (thumbnailUrl !== undefined) updateData.thumbnail_url = thumbnailUrl
 
     const { data, error } = await supabase
       .from('content_drafts')

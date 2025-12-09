@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { DraftCard } from './DraftCard'
+import { AssetPickerModal } from './AssetPickerModal'
 import {
   Loader2,
   Filter,
@@ -13,6 +14,28 @@ import {
   Clock,
   Archive
 } from 'lucide-react'
+
+interface ContentAsset {
+  id: string
+  name: string
+  description: string | null
+  asset_type: 'image' | 'video' | 'gif' | 'audio'
+  file_url: string
+  thumbnail_url: string | null
+  file_size_bytes: number | null
+  width: number | null
+  height: number | null
+  duration_seconds: number | null
+  format: string | null
+  is_ai_generated: boolean
+  generation_provider: string | null
+  generation_prompt: string | null
+  tags: string[]
+  folder: string | null
+  is_favorite: boolean
+  usage_count: number
+  created_at: string
+}
 
 interface ContentDraft {
   id: string
@@ -55,6 +78,8 @@ export function DraftList({ propertyId, onEditDraft, refreshTrigger }: DraftList
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [total, setTotal] = useState(0)
+  const [showAssetPicker, setShowAssetPicker] = useState(false)
+  const [selectedDraftForMedia, setSelectedDraftForMedia] = useState<ContentDraft | null>(null)
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true)
@@ -190,6 +215,40 @@ export function DraftList({ propertyId, onEditDraft, refreshTrigger }: DraftList
     }
   }
 
+  const handleAttachMedia = (draft: ContentDraft) => {
+    setSelectedDraftForMedia(draft)
+    setShowAssetPicker(true)
+  }
+
+  const handleAssetSelected = async (asset: ContentAsset) => {
+    if (!selectedDraftForMedia) return
+
+    try {
+      const res = await fetch('/api/forgestudio/drafts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draftId: selectedDraftForMedia.id,
+          mediaUrls: [asset.file_url],
+          mediaType: asset.asset_type,
+          thumbnailUrl: asset.thumbnail_url || (asset.asset_type === 'image' ? asset.file_url : null)
+        })
+      })
+
+      if (res.ok) {
+        fetchDrafts()
+        setShowAssetPicker(false)
+        setSelectedDraftForMedia(null)
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Failed to attach media')
+      }
+    } catch (err) {
+      console.error('Error attaching media:', err)
+      alert('Failed to attach media. Please try again.')
+    }
+  }
+
   const filteredDrafts = drafts.filter(draft =>
     draft.caption.toLowerCase().includes(searchQuery.toLowerCase()) ||
     draft.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -300,9 +359,23 @@ export function DraftList({ propertyId, onEditDraft, refreshTrigger }: DraftList
               onDelete={handleDelete}
               onSchedule={handleSchedule}
               onPublish={handlePublish}
+              onAttachMedia={handleAttachMedia}
             />
           ))}
         </div>
+      )}
+
+      {/* Asset Picker Modal */}
+      {showAssetPicker && selectedDraftForMedia && (
+        <AssetPickerModal
+          propertyId={propertyId}
+          onClose={() => {
+            setShowAssetPicker(false)
+            setSelectedDraftForMedia(null)
+          }}
+          onSelect={handleAssetSelected}
+          title={selectedDraftForMedia.media_urls.length > 0 ? 'Change Media' : 'Attach Media'}
+        />
       )}
     </div>
   )

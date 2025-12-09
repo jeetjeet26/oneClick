@@ -16,9 +16,11 @@ import {
   Tag,
   Folder,
   Filter,
-  Plus
+  Plus,
+  FileText
 } from 'lucide-react'
 import { AssetGeneratorModal } from './AssetGeneratorModal'
+import { DraftPickerModal } from './DraftPickerModal'
 
 interface ContentAsset {
   id: string
@@ -66,6 +68,8 @@ export function AssetGallery({ propertyId, onSelectAsset, selectionMode = false 
   const [showGenerator, setShowGenerator] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<ContentAsset | null>(null)
   const [showMenu, setShowMenu] = useState<string | null>(null)
+  const [showDraftPicker, setShowDraftPicker] = useState(false)
+  const [assetForDraft, setAssetForDraft] = useState<ContentAsset | null>(null)
 
   const fetchAssets = useCallback(async () => {
     setLoading(true)
@@ -125,6 +129,41 @@ export function AssetGallery({ propertyId, onSelectAsset, selectionMode = false 
       fetchAssets()
     } catch (err) {
       console.error('Error deleting asset:', err)
+    }
+  }
+
+  const handleUseInDraft = (asset: ContentAsset) => {
+    setAssetForDraft(asset)
+    setShowDraftPicker(true)
+    setShowMenu(null)
+  }
+
+  const handleDraftSelected = async (draft: { id: string }) => {
+    if (!assetForDraft) return
+
+    try {
+      const res = await fetch('/api/forgestudio/drafts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draftId: draft.id,
+          mediaUrls: [assetForDraft.file_url],
+          mediaType: assetForDraft.asset_type,
+          thumbnailUrl: assetForDraft.thumbnail_url || (assetForDraft.asset_type === 'image' ? assetForDraft.file_url : null)
+        })
+      })
+
+      if (res.ok) {
+        setShowDraftPicker(false)
+        setAssetForDraft(null)
+        alert('Asset added to draft successfully!')
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Failed to add asset to draft')
+      }
+    } catch (err) {
+      console.error('Error adding asset to draft:', err)
+      alert('Failed to add asset to draft. Please try again.')
     }
   }
 
@@ -380,7 +419,14 @@ export function AssetGallery({ propertyId, onSelectAsset, selectionMode = false 
                       className="fixed inset-0 z-10"
                       onClick={(e) => { e.stopPropagation(); setShowMenu(null); }}
                     />
-                    <div className="absolute right-0 bottom-full mb-1 z-20 w-36 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-lg py-1">
+                    <div className="absolute right-0 bottom-full mb-1 z-20 w-44 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-lg py-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUseInDraft(asset); }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-violet-50 dark:hover:bg-violet-500/10 flex items-center gap-2 text-violet-600 dark:text-violet-400 font-medium"
+                      >
+                        <FileText className="w-4 h-4" /> Use in Draft
+                      </button>
+                      <hr className="my-1 border-slate-200 dark:border-slate-700" />
                       <a
                         href={asset.file_url}
                         download
@@ -445,9 +491,39 @@ export function AssetGallery({ propertyId, onSelectAsset, selectionMode = false 
               {selectedAsset.description && (
                 <p className="text-sm text-slate-300 mt-1">{selectedAsset.description}</p>
               )}
+              {/* Use in Draft button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleUseInDraft(selectedAsset)
+                  setSelectedAsset(null)
+                }}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                Use in Draft
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Draft Picker Modal */}
+      {showDraftPicker && assetForDraft && (
+        <DraftPickerModal
+          propertyId={propertyId}
+          onClose={() => {
+            setShowDraftPicker(false)
+            setAssetForDraft(null)
+          }}
+          onSelect={handleDraftSelected}
+          title="Add to Draft"
+          assetPreview={{
+            type: assetForDraft.asset_type as 'image' | 'video',
+            url: assetForDraft.thumbnail_url || assetForDraft.file_url,
+            name: assetForDraft.name
+          }}
+        />
       )}
     </div>
   )
