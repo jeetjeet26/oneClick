@@ -294,8 +294,8 @@
 - [x] Ad copy generator ✅ (Dec 9) - Multiple platform support
 - [x] Email copy generator ✅ (Dec 9) - Tour follow-up, lease renewal
 - [x] Video script generator ✅ (Dec 9) - Content type support
-- [x] AI image generation ✅ (Dec 9) - Gemini Imagen + Nano Banana
-- [x] AI video generation ✅ (Dec 9) - Nano Banana API
+- [x] AI image generation ✅ (Dec 9) - Gemini Imagen 3.0 (Vertex AI)
+- [x] AI video generation ✅ (Dec 9) - Google Veo 3 Preview (veo-3.0-generate-preview) - Synchronized audio, cinematic quality, realistic physics
 - [x] Brand voice training ✅ (Dec 9) - ForgeStudioConfig with creativity level
 - [x] Content calendar ✅ (Dec 9) - Full month view with scheduling
 - [x] Content templates ✅ (Dec 9) - 8 default templates seeded

@@ -52,11 +52,16 @@ export function AssetGeneratorModal({ propertyId, onClose, onGenerated }: AssetG
   const [saveName, setSaveName] = useState('')
   const [tags, setTags] = useState('')
   
+  // Video-specific settings (Veo 3)
+  const [videoDuration, setVideoDuration] = useState<4 | 6 | 8>(8)
+  const [includeAudio, setIncludeAudio] = useState(true)
+  
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
 
   const needsSourceImage = generationType === 'image-to-image' || generationType === 'image-to-video'
+  const isVideoGeneration = generationType === 'text-to-video' || generationType === 'image-to-video'
 
   const handleGenerate = async () => {
     if (!prompt) {
@@ -87,7 +92,10 @@ export function AssetGeneratorModal({ propertyId, onClose, onGenerated }: AssetG
           quality,
           aspectRatio,
           saveName: saveName || undefined,
-          tags: tags ? tags.split(',').map(t => t.trim()) : ['ai-generated']
+          tags: tags ? tags.split(',').map(t => t.trim()) : ['ai-generated'],
+          // Video-specific settings
+          videoDuration: isVideoGeneration ? videoDuration : undefined,
+          includeAudio: isVideoGeneration ? includeAudio : undefined
         })
       })
 
@@ -219,6 +227,56 @@ export function AssetGeneratorModal({ propertyId, onClose, onGenerated }: AssetG
               placeholder="What to avoid in the generation..."
             />
           </div>
+
+          {/* Video Duration (only for video generation) */}
+          {isVideoGeneration && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                Video Duration
+                <span className="ml-2 text-xs text-slate-500">($0.75/second)</span>
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {[4, 6, 8].map((duration) => (
+                  <button
+                    key={duration}
+                    onClick={() => setVideoDuration(duration as 4 | 6 | 8)}
+                    className={`py-3 rounded-lg border-2 transition-all ${
+                      videoDuration === duration
+                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className={`font-semibold ${videoDuration === duration ? 'text-amber-700 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                      {duration}s
+                    </div>
+                    <div className="text-xs text-slate-500">${(duration * 0.75).toFixed(2)}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Audio Generation Toggle (only for video generation) */}
+          {isVideoGeneration && (
+            <div>
+              <label className="flex items-center justify-between p-4 rounded-lg border-2 border-slate-200 dark:border-slate-600 hover:border-slate-300 transition-all cursor-pointer">
+                <div>
+                  <div className="font-medium text-slate-900 dark:text-white">
+                    Include Audio Generation
+                  </div>
+                  <div className="text-sm text-slate-500">
+                    Generate synchronized sound effects, dialogue, and music (Veo 3)
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={includeAudio}
+                  onChange={(e) => setIncludeAudio(e.target.checked)}
+                  className="w-5 h-5 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                />
+              </label>
+            </div>
+          )}
 
           {/* Style & Options Row */}
           <div className="grid grid-cols-2 gap-4">

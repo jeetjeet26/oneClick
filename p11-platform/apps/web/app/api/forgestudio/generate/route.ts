@@ -101,7 +101,8 @@ async function generateWithGemini(
   }
 }
 
-// Generate video using Vertex AI Veo
+// Generate video using Vertex AI Veo 3 (Latest: Dec 2025)
+// Veo 3 features: Enhanced realism, native audio generation, improved prompt adherence, realistic physics
 async function generateVideoWithVertexAI(
   prompt: string,
   params: {
@@ -149,12 +150,15 @@ async function generateVideoWithVertexAI(
       parameters: {
         aspectRatio: params.aspectRatio === '9:16' ? '9:16' : '16:9',
         sampleCount: 1,
-        durationSeconds: 5
+        durationSeconds: 8 // Veo 3 supports: 4, 6, or 8 seconds
       }
     }
 
     const location = 'us-central1'
-    const modelId = 'veo-2.0-generate-001'
+    // Updated to Veo 3 (July 2025) - Available in paid preview
+    // Model: veo-3.0-generate-preview
+    // Features: Synchronized audio, cinematic quality, realistic physics
+    const modelId = 'veo-3.0-generate-preview'
     const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predictLongRunning`
 
     const generateResponse = await fetch(endpoint, {

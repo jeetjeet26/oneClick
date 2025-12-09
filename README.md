@@ -84,6 +84,7 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | **Backend** | Next.js API Routes, Supabase Edge Functions |
 | **Database** | PostgreSQL + pgvector (Supabase) |
 | **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, LangChain.js |
+| **Media Generation** | Google Veo 3 Preview (video + audio), Imagen 3.0 (images) via Vertex AI |
 | **Data Pipelines** | Python, dlt, Playwright (scraping) |
 | **Auth** | Supabase Auth (GoTrue) |
 | **Deployment** | Vercel (web), Heroku (data-engine) |

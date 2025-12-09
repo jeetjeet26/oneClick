@@ -116,7 +116,8 @@ async function generateWithGemini(
   }
 }
 
-// Generate video using Vertex AI Veo
+// Generate video using Vertex AI Veo 3 (Latest: Dec 2025)
+// Veo 3 features: Enhanced realism, native audio generation, improved prompt adherence, realistic physics
 async function generateVideoWithVertexAI(
   prompt: string,
   params: {
@@ -124,6 +125,8 @@ async function generateVideoWithVertexAI(
     aspectRatio?: string
     sourceImageUrl?: string
     negativePrompt?: string
+    videoDuration?: 4 | 6 | 8
+    includeAudio?: boolean
   }
 ): Promise<{ 
   url: string
@@ -178,8 +181,10 @@ async function generateVideoWithVertexAI(
       parameters: {
         aspectRatio: params.aspectRatio === '9:16' ? '9:16' : '16:9',
         sampleCount: 1,
-        durationSeconds: 5,
-        personGeneration: 'allow_adult'
+        durationSeconds: params.videoDuration || 8, // Veo 3 supports: 4, 6, or 8 seconds
+        personGeneration: 'allow_adult',
+        // Audio generation (default: true for Veo 3)
+        generateAudio: params.includeAudio !== false
       }
     }
 
@@ -189,7 +194,10 @@ async function generateVideoWithVertexAI(
     }
 
     const location = 'us-central1'
-    const modelId = 'veo-2.0-generate-001'
+    // Updated to Veo 3 (July 2025) - Available in paid preview
+    // Model: veo-3.0-generate-preview
+    // Features: Synchronized audio, cinematic quality, realistic physics
+    const modelId = 'veo-3.0-generate-preview'
     const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predictLongRunning`
 
     console.log('Starting Vertex AI video generation...')
@@ -258,13 +266,13 @@ async function generateVideoWithVertexAI(
             return {
               url: `data:${mimeType};base64,${video.bytesBase64Encoded}`,
               thumbnailUrl: undefined,
-              durationSeconds: 5
+              durationSeconds: params.videoDuration || 8
             }
           } else if (video.gcsUri) {
             return {
               url: video.gcsUri,
               thumbnailUrl: undefined,
-              durationSeconds: 5
+              durationSeconds: params.videoDuration || 8
             }
           }
         }
@@ -295,7 +303,10 @@ export async function POST(request: NextRequest) {
       saveName,
       tags,
       folder,
-      provider // 'gemini' or 'nanobanana'
+      provider, // 'gemini' or 'nanobanana'
+      // Video-specific settings
+      videoDuration, // 4, 6, or 8 seconds
+      includeAudio // boolean - whether to generate audio with video
     } = body
 
     if (!propertyId || !generationType || !prompt) {
@@ -340,7 +351,9 @@ export async function POST(request: NextRequest) {
         style,
         aspectRatio,
         sourceImageUrl,
-        negativePrompt
+        negativePrompt,
+        videoDuration: videoDuration as 4 | 6 | 8 | undefined,
+        includeAudio
       })
       usedProvider = 'vertex_ai_veo'
     } else {
