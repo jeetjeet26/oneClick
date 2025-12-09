@@ -27,6 +27,7 @@ interface CompetitorUnit {
 
 interface Competitor {
   id: string
+  propertyId?: string
   name: string
   address: string | null
   websiteUrl: string | null
@@ -35,6 +36,9 @@ interface Competitor {
   yearBuilt: number | null
   propertyType: string
   amenities: string[]
+  photos?: string[]
+  ilsListings?: Record<string, string>
+  notes?: string | null
   isActive: boolean
   lastScrapedAt: string | null
   units?: CompetitorUnit[]

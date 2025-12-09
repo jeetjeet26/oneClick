@@ -2,13 +2,35 @@
 Scraping Coordinator
 Manages scraping jobs, syncs with Supabase, handles updates
 Includes brand intelligence extraction for competitor analysis
+
+Updated Dec 2025: Uses Apify for apartments.com scraping (replaces blocked Playwright/httpx)
 """
 
 import logging
 import asyncio
+import concurrent.futures
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import hashlib
+
+
+def run_async_in_thread(coro):
+    """
+    Run an async coroutine in a separate thread with its own event loop.
+    This allows Playwright to work when called from FastAPI's async context,
+    since Playwright needs full control of subprocess spawning.
+    """
+    def run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(run)
+        return future.result()
 
 from scrapers.base import ScrapedProperty
 from scrapers.discovery import CompetitorDiscovery, DiscoveryConfig, SubjectPropertyInfo
@@ -16,6 +38,15 @@ from scrapers.brand_intelligence import (
     BrandIntelligenceExtractor,
     CompetitorBatchProcessor,
     SemanticSearchService
+)
+from scrapers.website_intelligence import (
+    CommunityWebsiteScraper,
+    FloorPlanUnit
+)
+from scrapers.apify_apartments import (
+    ApifyApartmentsScraper,
+    is_apify_configured,
+    get_apify_scraper
 )
 from utils.supabase_client import get_supabase_client
 
@@ -154,19 +185,27 @@ class ScrapingCoordinator:
             'competitors': [d.to_dict() for d in new_competitors] if not auto_add else added
         }
     
-    def refresh_all_competitors(self, property_id: str) -> Dict[str, Any]:
+    def refresh_all_competitors(
+        self, 
+        property_id: str,
+        prefer_website: bool = True
+    ) -> Dict[str, Any]:
         """
-        Refresh pricing data for all competitors of a property
+        Refresh pricing data for all competitors of a property.
+        
+        Prioritizes competitor website over ILS listings (apartments.com).
+        Falls back to apartments.com if website scraping doesn't yield pricing.
         
         Args:
             property_id: Supabase property ID
+            prefer_website: If True, try website_url first before apartments.com
             
         Returns:
             Dict with refresh results
         """
-        # Get all competitors with ILS listings
+        # Get all competitors with website URLs or ILS listings
         competitors_result = self.supabase.table('competitors').select(
-            'id, name, ils_listings'
+            'id, name, website_url, ils_listings'
         ).eq('property_id', property_id).eq('is_active', True).execute()
         
         competitors = competitors_result.data or []
@@ -177,33 +216,60 @@ class ScrapingCoordinator:
         discovery = CompetitorDiscovery(proxy_url=self.proxy_url)
         
         updated = 0
+        website_updated = 0
+        ils_updated = 0
         errors = []
         
         for competitor in competitors:
+            website_url = competitor.get('website_url')
             ils_listings = competitor.get('ils_listings', {})
+            refreshed_from = None
             
-            # Try to refresh from each source
-            for source, url in ils_listings.items():
-                if not url:
-                    continue
-                
+            # Try website first if preferred and available
+            if prefer_website and website_url:
                 try:
-                    refreshed = discovery.refresh_competitor(url, source)
+                    result = self.refresh_competitor_from_website(
+                        competitor_id=competitor['id'],
+                        website_url=website_url
+                    )
                     
-                    if refreshed:
-                        # Update competitor and units
-                        self._update_competitor(competitor['id'], refreshed)
+                    if result.get('success') and result.get('units_updated', 0) > 0:
                         updated += 1
-                        logger.info(f"Refreshed: {competitor['name']}")
-                    
-                    break  # Only need one successful source
-                    
+                        website_updated += 1
+                        refreshed_from = 'website'
+                        logger.info(f"Refreshed {competitor['name']} from website: {result.get('units_updated')} units")
+                        continue  # Move to next competitor
+                        
                 except Exception as e:
-                    logger.error(f"Error refreshing {competitor['name']}: {e}")
-                    errors.append({
-                        'competitor': competitor['name'],
-                        'error': str(e)
-                    })
+                    logger.warning(f"Website refresh failed for {competitor['name']}: {e}")
+            
+            # Fall back to ILS listings (apartments.com, etc.)
+            if not refreshed_from:
+                for source, url in ils_listings.items():
+                    if not url:
+                        continue
+                    
+                    try:
+                        refreshed = discovery.refresh_competitor(url, source)
+                        
+                        if refreshed:
+                            # Update competitor and units
+                            self._update_competitor(competitor['id'], refreshed)
+                            updated += 1
+                            ils_updated += 1
+                            refreshed_from = source
+                            logger.info(f"Refreshed {competitor['name']} from {source}")
+                        
+                        break  # Only need one successful source
+                        
+                    except Exception as e:
+                        logger.error(f"Error refreshing {competitor['name']} from {source}: {e}")
+            
+            if not refreshed_from:
+                errors.append({
+                    'competitor': competitor['name'],
+                    'error': 'No successful refresh from any source'
+                })
         
         # Update last scraped timestamp
         self.supabase.table('scrape_config').update({
@@ -215,8 +281,310 @@ class ScrapingCoordinator:
             'success': True,
             'total_competitors': len(competitors),
             'updated_count': updated,
+            'website_updated': website_updated,
+            'ils_updated': ils_updated,
             'error_count': len(errors),
             'errors': errors[:5]  # Limit errors returned
+        }
+    
+    def refresh_competitor_from_website(
+        self,
+        competitor_id: str,
+        website_url: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Refresh pricing data for a competitor from their website.
+        
+        Scrapes the competitor's website for floor plans and pricing data.
+        This is the preferred method as it gets data directly from the source.
+        
+        Args:
+            competitor_id: Competitor UUID
+            website_url: Optional URL override (otherwise fetched from competitor record)
+            
+        Returns:
+            Dict with refresh results
+        """
+        # Get competitor details if URL not provided
+        if not website_url:
+            competitor_result = self.supabase.table('competitors').select(
+                'id, name, website_url'
+            ).eq('id', competitor_id).single().execute()
+            
+            if not competitor_result.data:
+                return {'success': False, 'error': 'Competitor not found'}
+            
+            competitor = competitor_result.data
+            website_url = competitor.get('website_url')
+            competitor_name = competitor.get('name', 'Unknown')
+        else:
+            competitor_name = 'Competitor'
+        
+        if not website_url:
+            return {'success': False, 'error': 'No website URL for this competitor'}
+        
+        logger.info(f"Refreshing {competitor_name} pricing from website: {website_url}")
+        
+        try:
+            # Use async scraper with Playwright priority and LLM extraction (best accuracy)
+            scraper = CommunityWebsiteScraper(
+                prefer_playwright=True,
+                use_llm_extraction=True  # Use GPT-4o-mini for intelligent pricing extraction
+            )
+            # Run in separate thread to avoid event loop conflicts with Playwright
+            knowledge = run_async_in_thread(scraper.extract_community_knowledge(website_url))
+            
+            if not knowledge.floor_plans:
+                return {
+                    'success': True,
+                    'competitor_id': competitor_id,
+                    'scraped': True,
+                    'source': 'website',
+                    'units_updated': 0,
+                    'message': 'Website scraped but no pricing data found'
+                }
+            
+            # Update units with extracted pricing
+            units_updated = self._update_units_from_floor_plans(
+                competitor_id, 
+                knowledge.floor_plans
+            )
+            
+            # Update competitor last_scraped_at
+            self.supabase.table('competitors').update({
+                'last_scraped_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', competitor_id).execute()
+            
+            return {
+                'success': True,
+                'competitor_id': competitor_id,
+                'scraped': True,
+                'source': 'website',
+                'units_updated': units_updated,
+                'floor_plans_found': len(knowledge.floor_plans),
+                'specials_found': len(knowledge.specials),
+                'amenities_found': len(knowledge.amenities)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error refreshing from website: {e}")
+            return {
+                'success': False,
+                'competitor_id': competitor_id,
+                'scraped': False,
+                'source': 'website',
+                'error': str(e)
+            }
+    
+    def _update_units_from_floor_plans(
+        self,
+        competitor_id: str,
+        floor_plans: List[FloorPlanUnit]
+    ) -> int:
+        """
+        Update competitor units from extracted floor plan data.
+        
+        Creates price change alerts if prices have changed.
+        
+        Returns:
+            Number of units updated/created
+        """
+        # Get existing units
+        existing_result = self.supabase.table('competitor_units').select(
+            'id, unit_type, rent_min, rent_max, available_count'
+        ).eq('competitor_id', competitor_id).execute()
+        
+        existing_map = {u['unit_type']: u for u in (existing_result.data or [])}
+        
+        # Get competitor details for alerts
+        competitor_result = self.supabase.table('competitors').select(
+            'name, property_id'
+        ).eq('id', competitor_id).single().execute()
+        
+        competitor = competitor_result.data if competitor_result.data else {}
+        property_id = competitor.get('property_id')
+        competitor_name = competitor.get('name', 'Unknown')
+        
+        units_updated = 0
+        
+        for fp in floor_plans:
+            existing = existing_map.get(fp.unit_type)
+            
+            if existing:
+                old_rent = existing.get('rent_min')
+                
+                # Check if price changed
+                price_changed = (
+                    existing['rent_min'] != fp.rent_min or
+                    existing['rent_max'] != fp.rent_max
+                )
+                
+                # Update existing unit
+                self.supabase.table('competitor_units').update({
+                    'bedrooms': fp.bedrooms,
+                    'bathrooms': fp.bathrooms,
+                    'sqft_min': fp.sqft_min,
+                    'sqft_max': fp.sqft_max,
+                    'rent_min': fp.rent_min,
+                    'rent_max': fp.rent_max,
+                    'deposit': fp.deposit,
+                    'available_count': fp.available_count,
+                    'move_in_specials': fp.move_in_specials,
+                    'last_updated_at': datetime.now(timezone.utc).isoformat()
+                }).eq('id', existing['id']).execute()
+                
+                # Add price history if changed
+                if price_changed or existing['available_count'] != fp.available_count:
+                    self.supabase.table('competitor_price_history').insert({
+                        'competitor_unit_id': existing['id'],
+                        'rent_min': fp.rent_min,
+                        'rent_max': fp.rent_max,
+                        'available_count': fp.available_count,
+                        'source': 'website_scrape'
+                    }).execute()
+                
+                # Create price alert if significant change
+                if price_changed and property_id and old_rent and fp.rent_min:
+                    change = fp.rent_min - old_rent
+                    change_pct = (change / old_rent) * 100
+                    
+                    severity = 'info'
+                    if abs(change_pct) >= 10:
+                        severity = 'high'
+                    elif abs(change_pct) >= 5:
+                        severity = 'medium'
+                    
+                    alert_type = 'price_increase' if change > 0 else 'price_decrease'
+                    
+                    self.supabase.table('market_alerts').insert({
+                        'property_id': property_id,
+                        'competitor_id': competitor_id,
+                        'alert_type': alert_type,
+                        'severity': severity,
+                        'title': f"{competitor_name} {fp.unit_type} price {'increased' if change > 0 else 'decreased'}",
+                        'description': f"${old_rent} → ${fp.rent_min} ({change_pct:+.1f}%)",
+                        'data': {
+                            'unit_type': fp.unit_type,
+                            'old_rent': old_rent,
+                            'new_rent': fp.rent_min,
+                            'change': change,
+                            'change_percent': round(change_pct, 1),
+                            'source': 'website_scrape'
+                        }
+                    }).execute()
+                
+                units_updated += 1
+                
+            else:
+                # Insert new unit
+                unit_data = {
+                    'competitor_id': competitor_id,
+                    'unit_type': fp.unit_type,
+                    'bedrooms': fp.bedrooms,
+                    'bathrooms': fp.bathrooms,
+                    'sqft_min': fp.sqft_min,
+                    'sqft_max': fp.sqft_max,
+                    'rent_min': fp.rent_min,
+                    'rent_max': fp.rent_max,
+                    'deposit': fp.deposit,
+                    'available_count': fp.available_count,
+                    'move_in_specials': fp.move_in_specials
+                }
+                
+                result = self.supabase.table('competitor_units').insert(
+                    unit_data
+                ).execute()
+                
+                # Add initial price history
+                if result.data and (fp.rent_min or fp.rent_max):
+                    self.supabase.table('competitor_price_history').insert({
+                        'competitor_unit_id': result.data[0]['id'],
+                        'rent_min': fp.rent_min,
+                        'rent_max': fp.rent_max,
+                        'available_count': fp.available_count,
+                        'source': 'website_scrape'
+                    }).execute()
+                
+                units_updated += 1
+        
+        return units_updated
+    
+    def batch_refresh_from_website(
+        self,
+        property_id: str,
+        competitor_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Batch refresh pricing data for multiple competitors from their websites.
+        
+        Args:
+            property_id: Property UUID
+            competitor_ids: Optional list of specific competitor IDs (None = all with website URLs)
+            
+        Returns:
+            Dict with batch refresh results
+        """
+        # Get competitors with website URLs
+        query = self.supabase.table('competitors').select(
+            'id, name, website_url'
+        ).eq('property_id', property_id).eq('is_active', True).not_.is_('website_url', 'null')
+        
+        if competitor_ids:
+            query = query.in_('id', competitor_ids)
+        
+        result = query.execute()
+        competitors = result.data or []
+        
+        if not competitors:
+            return {
+                'success': True,
+                'message': 'No competitors with website URLs',
+                'refreshed': 0,
+                'failed': 0
+            }
+        
+        logger.info(f"Batch refreshing {len(competitors)} competitors from websites")
+        
+        refreshed = 0
+        failed = 0
+        errors = []
+        
+        for comp in competitors:
+            try:
+                result = self.refresh_competitor_from_website(
+                    competitor_id=comp['id'],
+                    website_url=comp['website_url']
+                )
+                
+                if result.get('success') and result.get('units_updated', 0) > 0:
+                    refreshed += 1
+                    logger.info(f"Refreshed: {comp['name']} ({result.get('units_updated')} units)")
+                else:
+                    # Scraped but no pricing found - not an error
+                    if result.get('scraped'):
+                        logger.info(f"No pricing found for: {comp['name']}")
+                    else:
+                        failed += 1
+                        errors.append({
+                            'competitor': comp['name'],
+                            'error': result.get('error', 'Unknown error')
+                        })
+                        
+            except Exception as e:
+                failed += 1
+                errors.append({
+                    'competitor': comp['name'],
+                    'error': str(e)
+                })
+        
+        return {
+            'success': True,
+            'source': 'website',
+            'total': len(competitors),
+            'refreshed': refreshed,
+            'failed': failed,
+            'errors': errors[:5],
+            'message': f"Refreshed {refreshed} of {len(competitors)} competitors from websites"
         }
     
     def _add_competitors(
@@ -487,9 +855,14 @@ class ScrapingCoordinator:
         
         job_id = processor.create_job(property_id, competitor_ids_to_process)
         
-        # Run job in background
+        # Run job in background thread with its own event loop
         def run_job():
-            asyncio.run(processor.process_job(job_id, force_refresh))
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(processor.process_job(job_id, force_refresh))
+            finally:
+                loop.close()
         
         import threading
         thread = threading.Thread(target=run_job, daemon=True)
@@ -591,8 +964,8 @@ class ScrapingCoordinator:
         """
         search_service = SemanticSearchService()
         
-        # Run async search
-        results = asyncio.run(search_service.search(
+        # Run async search in thread to avoid event loop conflicts
+        results = run_async_in_thread(search_service.search(
             query=query,
             property_id=property_id,
             competitor_ids=competitor_ids,
@@ -615,5 +988,657 @@ class ScrapingCoordinator:
             Number of embeddings generated
         """
         search_service = SemanticSearchService()
-        return asyncio.run(search_service.generate_embeddings_for_competitor(competitor_id))
+        return run_async_in_thread(search_service.generate_embeddings_for_competitor(competitor_id))
+    
+    # =========================================================================
+    # APARTMENTS.COM SCRAPING METHODS (via Apify)
+    # =========================================================================
+    
+    def refresh_competitor_from_apartments_com(
+        self,
+        competitor_id: str,
+        apartments_com_url: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Refresh pricing data for a competitor from their apartments.com listing.
+        
+        Uses Apify's managed scraper (epctex/apartments-scraper) which handles
+        anti-bot detection, proxy rotation, and JavaScript rendering.
+        
+        Args:
+            competitor_id: Competitor UUID
+            apartments_com_url: Optional URL override (otherwise fetched from ils_listings)
+            
+        Returns:
+            Dict with refresh results
+        """
+        # Get competitor details
+        competitor_result = self.supabase.table('competitors').select(
+            'id, name, ils_listings'
+        ).eq('id', competitor_id).single().execute()
+        
+        if not competitor_result.data:
+            return {'success': False, 'error': 'Competitor not found'}
+        
+        competitor = competitor_result.data
+        
+        # Get apartments.com URL
+        url = apartments_com_url
+        if not url:
+            ils_listings = competitor.get('ils_listings', {})
+            url = ils_listings.get('apartments_com')
+        
+        if not url:
+            return {'success': False, 'error': 'No apartments.com URL for this competitor'}
+        
+        logger.info(f"Refreshing {competitor['name']} from apartments.com via Apify: {url}")
+        
+        # Check if Apify is configured
+        if not is_apify_configured():
+            return {
+                'success': False,
+                'error': 'APIFY_API_TOKEN not configured. Set environment variable to enable apartments.com scraping.'
+            }
+        
+        try:
+            scraper = ApifyApartmentsScraper()
+            property_data = scraper.scrape_property(url)
+            
+            if not property_data:
+                return {
+                    'success': False,
+                    'competitor_id': competitor_id,
+                    'competitor_name': competitor['name'],
+                    'scraped': False,
+                    'source_url': url,
+                    'message': 'Apify scrape returned no data. Check the URL and try again.'
+                }
+            
+            # Update competitor with scraped data
+            self._update_competitor(competitor_id, property_data)
+            
+            # Create price change alerts if applicable
+            self._check_and_create_price_alerts(competitor_id, property_data)
+            
+            return {
+                'success': True,
+                'competitor_id': competitor_id,
+                'competitor_name': competitor['name'],
+                'scraped': True,
+                'scraper': 'apify',
+                'units_scraped': len(property_data.units),
+                'amenities_found': len(property_data.amenities),
+                'source_url': url
+            }
+            
+        except Exception as e:
+            logger.error(f"Error refreshing from apartments.com via Apify: {e}")
+            return {
+                'success': False,
+                'competitor_id': competitor_id,
+                'scraped': False,
+                'source_url': url,
+                'error': str(e)
+            }
+    
+    def batch_refresh_from_apartments_com(
+        self,
+        property_id: str,
+        competitor_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Refresh pricing data for multiple competitors from apartments.com.
+        
+        Uses Apify's batch scraping capability for efficient multi-property refresh.
+        
+        Args:
+            property_id: Property UUID
+            competitor_ids: Optional list of specific competitor IDs (None = all with apartments.com URLs)
+            
+        Returns:
+            Dict with batch refresh results
+        """
+        # Check if Apify is configured
+        if not is_apify_configured():
+            return {
+                'success': False,
+                'error': 'APIFY_API_TOKEN not configured. Set environment variable to enable apartments.com scraping.'
+            }
+        
+        # Get competitors with apartments.com URLs
+        query = self.supabase.table('competitors').select(
+            'id, name, ils_listings'
+        ).eq('property_id', property_id).eq('is_active', True)
+        
+        if competitor_ids:
+            query = query.in_('id', competitor_ids)
+        
+        result = query.execute()
+        competitors = result.data or []
+        
+        # Filter to those with apartments.com URLs
+        competitors_with_urls = [
+            c for c in competitors 
+            if c.get('ils_listings', {}).get('apartments_com')
+        ]
+        
+        if not competitors_with_urls:
+            return {
+                'success': True,
+                'message': 'No competitors with apartments.com URLs',
+                'refreshed': 0,
+                'failed': 0
+            }
+        
+        logger.info(f"Batch refreshing {len(competitors_with_urls)} competitors from apartments.com via Apify")
+        
+        # Collect all URLs for batch request
+        url_to_competitor = {}
+        urls = []
+        for comp in competitors_with_urls:
+            url = comp['ils_listings']['apartments_com']
+            urls.append(url)
+            url_to_competitor[url] = comp
+        
+        try:
+            scraper = ApifyApartmentsScraper()
+            
+            # Use batch refresh for efficiency
+            results = scraper.refresh_pricing(urls)
+            
+            refreshed = 0
+            failed = 0
+            errors = []
+            
+            # Match results back to competitors
+            for property_data in results:
+                source_url = property_data.source_url
+                competitor = url_to_competitor.get(source_url)
+                
+                if competitor and property_data:
+                    try:
+                        self._update_competitor(competitor['id'], property_data)
+                        self._check_and_create_price_alerts(competitor['id'], property_data)
+                        refreshed += 1
+                        logger.info(f"Refreshed: {competitor['name']}")
+                    except Exception as e:
+                        failed += 1
+                        errors.append({
+                            'competitor': competitor['name'],
+                            'error': str(e)
+                        })
+            
+            # Calculate failed (URLs that didn't return results)
+            failed += len(competitors_with_urls) - refreshed - failed
+            
+            return {
+                'success': True,
+                'scraper': 'apify',
+                'total': len(competitors_with_urls),
+                'refreshed': refreshed,
+                'failed': failed,
+                'errors': errors[:5],
+                'message': f"Successfully refreshed {refreshed} of {len(competitors_with_urls)} competitors via Apify"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in batch refresh via Apify: {e}")
+            return {
+                'success': False,
+                'total': len(competitors_with_urls),
+                'refreshed': 0,
+                'failed': len(competitors_with_urls),
+                'error': str(e)
+            }
+    
+    def discover_and_scrape_apartments_com(
+        self,
+        property_id: str,
+        city: str,
+        state: str,
+        max_results: int = 20,
+        auto_add: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Discover competitors from apartments.com search and add them.
+        
+        Uses Apify's search capability to find properties in a city/state.
+        
+        Args:
+            property_id: Property UUID to add competitors to
+            city: City name for search
+            state: State name or abbreviation
+            max_results: Maximum results to scrape
+            auto_add: Automatically add discovered competitors
+            
+        Returns:
+            Dict with discovery results
+        """
+        # Check if Apify is configured
+        if not is_apify_configured():
+            return {
+                'success': False,
+                'error': 'APIFY_API_TOKEN not configured. Set environment variable to enable apartments.com scraping.'
+            }
+        
+        logger.info(f"Discovering competitors from apartments.com via Apify: {city}, {state}")
+        
+        try:
+            scraper = ApifyApartmentsScraper()
+            properties = scraper.search_by_location(city, state, max_results=max_results)
+            
+            if not properties:
+                return {
+                    'success': True,
+                    'scraper': 'apify',
+                    'discovered': 0,
+                    'added': 0,
+                    'message': 'No properties found on apartments.com'
+                }
+            
+            logger.info(f"Discovered {len(properties)} properties from apartments.com via Apify")
+            
+            # Get existing competitors to avoid duplicates
+            existing_result = self.supabase.table('competitors').select(
+                'name, address'
+            ).eq('property_id', property_id).execute()
+            
+            existing_names = {c['name'].lower() for c in (existing_result.data or [])}
+            
+            # Filter out existing
+            new_properties = [
+                p for p in properties 
+                if p.name.lower() not in existing_names
+            ]
+            
+            added = []
+            if auto_add and new_properties:
+                added = self._add_competitors(property_id, new_properties)
+            
+            return {
+                'success': True,
+                'scraper': 'apify',
+                'discovered': len(properties),
+                'new_count': len(new_properties),
+                'added': len(added),
+                'competitors': [p.to_dict() for p in new_properties] if not auto_add else added
+            }
+            
+        except Exception as e:
+            logger.error(f"Error discovering from apartments.com via Apify: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def add_apartments_com_listing(
+        self,
+        competitor_id: str,
+        apartments_com_url: str,
+        skip_scrape: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Add an apartments.com listing URL to an existing competitor and optionally scrape it.
+        
+        Uses Apify for scraping if not skipped.
+        
+        Args:
+            competitor_id: Competitor UUID
+            apartments_com_url: Apartments.com listing URL
+            skip_scrape: If True, just save URL without scraping
+            
+        Returns:
+            Dict with results
+        """
+        # Verify competitor exists
+        competitor_result = self.supabase.table('competitors').select(
+            'id, name, ils_listings'
+        ).eq('id', competitor_id).single().execute()
+        
+        if not competitor_result.data:
+            return {'success': False, 'error': 'Competitor not found'}
+        
+        competitor = competitor_result.data
+        
+        # Update ILS listings - always save the URL first
+        ils_listings = competitor.get('ils_listings', {}) or {}
+        ils_listings['apartments_com'] = apartments_com_url
+        
+        self.supabase.table('competitors').update({
+            'ils_listings': ils_listings
+        }).eq('id', competitor_id).execute()
+        
+        logger.info(f"Saved apartments.com URL for {competitor['name']}: {apartments_com_url}")
+        
+        if skip_scrape:
+            return {
+                'success': True,
+                'competitor_id': competitor_id,
+                'competitor_name': competitor['name'],
+                'url_saved': True,
+                'scraped': False,
+                'message': 'URL saved successfully (scraping skipped)'
+            }
+        
+        # Check if Apify is configured for scraping
+        if not is_apify_configured():
+            return {
+                'success': True,
+                'competitor_id': competitor_id,
+                'competitor_name': competitor['name'],
+                'url_saved': True,
+                'scraped': False,
+                'message': 'URL saved. APIFY_API_TOKEN not configured for scraping.'
+            }
+        
+        # Scrape the listing via Apify
+        try:
+            scraper = ApifyApartmentsScraper()
+            property_data = scraper.scrape_property(apartments_com_url)
+            
+            if property_data:
+                self._update_competitor(competitor_id, property_data)
+                
+                return {
+                    'success': True,
+                    'competitor_id': competitor_id,
+                    'competitor_name': competitor['name'],
+                    'url_saved': True,
+                    'scraped': True,
+                    'scraper': 'apify',
+                    'units_scraped': len(property_data.units),
+                    'amenities_found': len(property_data.amenities)
+                }
+            else:
+                return {
+                    'success': True,
+                    'competitor_id': competitor_id,
+                    'url_saved': True,
+                    'scraped': False,
+                    'message': 'URL saved but Apify scraping returned no data'
+                }
+                
+        except Exception as e:
+            logger.warning(f"URL saved but Apify scraping failed: {e}")
+            return {
+                'success': True,
+                'competitor_id': competitor_id,
+                'url_saved': True,
+                'scraped': False,
+                'message': f'URL saved (scraping error: {str(e)})'
+            }
+    
+    async def find_apartments_com_listings(
+        self,
+        property_id: str,
+        competitor_ids: Optional[List[str]] = None,
+        auto_scrape: bool = True,
+        city_override: Optional[str] = None,
+        state_override: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Search apartments.com for existing competitors and link their listings.
+        
+        Uses Apify to search for competitor names in apartments.com search results.
+        
+        Args:
+            property_id: Property UUID
+            competitor_ids: Optional specific competitor IDs (None = all without URLs)
+            auto_scrape: Automatically scrape pricing after finding URLs
+            city_override: Override city for all searches
+            state_override: Override state for all searches
+            
+        Returns:
+            Dict with results: found, not_found, errors
+        """
+        import re
+        
+        # Check if Apify is configured
+        if not is_apify_configured():
+            return {
+                'success': False,
+                'error': 'APIFY_API_TOKEN not configured. Set environment variable to enable apartments.com scraping.'
+            }
+        
+        # Use override values if provided
+        property_city = city_override or ''
+        property_state = state_override or ''
+        
+        # Get property details for fallback city/state (if not overridden)
+        if not property_city or not property_state:
+            property_result = self.supabase.table('properties').select(
+                'id, name, address'
+            ).eq('id', property_id).single().execute()
+            
+            if property_result.data:
+                prop_address = property_result.data.get('address') or {}
+                if not property_city:
+                    property_city = prop_address.get('city', '')
+                if not property_state:
+                    property_state = prop_address.get('state', '')
+        
+        # Get competitors without apartments.com URLs
+        query = self.supabase.table('competitors').select(
+            'id, name, address, address_json, ils_listings'
+        ).eq('property_id', property_id).eq('is_active', True)
+        
+        if competitor_ids:
+            query = query.in_('id', competitor_ids)
+        
+        result = query.execute()
+        competitors = result.data or []
+        
+        # Filter to those without apartments.com URLs
+        competitors_to_search = [
+            c for c in competitors 
+            if not (c.get('ils_listings') or {}).get('apartments_com')
+        ]
+        
+        if not competitors_to_search:
+            return {
+                'success': True,
+                'message': 'All competitors already have apartments.com URLs',
+                'found': 0,
+                'searched': 0
+            }
+        
+        logger.info(f"Searching apartments.com via Apify for {len(competitors_to_search)} competitors")
+        logger.info(f"Property location fallback: {property_city}, {property_state}")
+        
+        # Use Apify to search the area first
+        search_city = city_override or property_city
+        search_state = state_override or property_state
+        
+        if not search_city or not search_state:
+            return {
+                'success': False,
+                'error': 'City and state required for apartments.com search. Provide city_override and state_override.',
+                'searched': 0,
+                'found': 0
+            }
+        
+        try:
+            scraper = ApifyApartmentsScraper()
+            
+            # Search apartments.com for the area to get property list
+            area_properties = scraper.search_by_location(
+                search_city, 
+                search_state, 
+                max_results=100  # Get more results to increase match chances
+            )
+            
+            logger.info(f"Found {len(area_properties)} properties in {search_city}, {search_state}")
+            
+            # Build lookup by normalized name
+            name_to_property = {}
+            for prop in area_properties:
+                # Normalize name for matching
+                normalized = prop.name.lower().strip()
+                normalized = re.sub(r'[^\w\s]', '', normalized)  # Remove punctuation
+                name_to_property[normalized] = prop
+                
+                # Also try without common suffixes
+                for suffix in [' apartments', ' apartment', ' residences', ' living', ' homes']:
+                    if normalized.endswith(suffix):
+                        name_to_property[normalized[:-len(suffix)]] = prop
+            
+            found = []
+            not_found = []
+            errors = []
+            
+            for competitor in competitors_to_search:
+                try:
+                    # Normalize competitor name for matching
+                    comp_name = competitor['name'].lower().strip()
+                    comp_name_normalized = re.sub(r'[^\w\s]', '', comp_name)
+                    
+                    # Try to find a match
+                    matched_property = None
+                    match_score = 0
+                    
+                    # Exact match
+                    if comp_name_normalized in name_to_property:
+                        matched_property = name_to_property[comp_name_normalized]
+                        match_score = 100
+                    else:
+                        # Try without suffixes
+                        for suffix in [' apartments', ' apartment', ' residences', ' living', ' homes']:
+                            if comp_name_normalized.endswith(suffix):
+                                short_name = comp_name_normalized[:-len(suffix)]
+                                if short_name in name_to_property:
+                                    matched_property = name_to_property[short_name]
+                                    match_score = 90
+                                    break
+                        
+                        # Try partial match (competitor name contained in property name or vice versa)
+                        if not matched_property:
+                            for prop_name, prop in name_to_property.items():
+                                if comp_name_normalized in prop_name or prop_name in comp_name_normalized:
+                                    matched_property = prop
+                                    match_score = 70
+                                    break
+                    
+                    if matched_property:
+                        # Found a match! Update the competitor
+                        ils_listings = competitor.get('ils_listings') or {}
+                        ils_listings['apartments_com'] = matched_property.source_url
+                        
+                        self.supabase.table('competitors').update({
+                            'ils_listings': ils_listings
+                        }).eq('id', competitor['id']).execute()
+                        
+                        found_entry = {
+                            'id': competitor['id'],
+                            'name': competitor['name'],
+                            'apartments_com_url': matched_property.source_url,
+                            'matched_name': matched_property.name,
+                            'match_score': match_score
+                        }
+                        
+                        # Auto-scrape is already done (we got the data from search)
+                        if auto_scrape and matched_property.units:
+                            self._update_competitor(competitor['id'], matched_property)
+                            found_entry['units_scraped'] = len(matched_property.units)
+                        
+                        found.append(found_entry)
+                        logger.info(f"Found apartments.com listing for {competitor['name']}: {matched_property.source_url}")
+                    else:
+                        not_found.append({
+                            'id': competitor['id'],
+                            'name': competitor['name'],
+                            'reason': 'No match found in search results'
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error matching {competitor['name']}: {e}")
+                    errors.append({
+                        'id': competitor['id'],
+                        'name': competitor['name'],
+                        'error': str(e)
+                    })
+            
+            return {
+                'success': True,
+                'scraper': 'apify',
+                'searched': len(competitors_to_search),
+                'found': len(found),
+                'not_found': len(not_found),
+                'errors': len(errors),
+                'found_listings': found,
+                'not_found_listings': not_found[:10],
+                'error_details': errors[:5]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error searching apartments.com via Apify: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'searched': 0,
+                'found': 0
+            }
+    
+    def _check_and_create_price_alerts(
+        self,
+        competitor_id: str,
+        scraped_data: ScrapedProperty
+    ) -> None:
+        """Check for price changes and create alerts"""
+        try:
+            # Get existing units for comparison
+            existing_result = self.supabase.table('competitor_units').select(
+                'id, unit_type, rent_min, rent_max'
+            ).eq('competitor_id', competitor_id).execute()
+            
+            existing_map = {u['unit_type']: u for u in (existing_result.data or [])}
+            
+            # Get competitor details for alert
+            competitor_result = self.supabase.table('competitors').select(
+                'name, property_id'
+            ).eq('id', competitor_id).single().execute()
+            
+            if not competitor_result.data:
+                return
+            
+            competitor = competitor_result.data
+            
+            for unit in scraped_data.units:
+                existing = existing_map.get(unit.unit_type)
+                
+                if existing and unit.rent_min:
+                    old_rent = existing.get('rent_min')
+                    
+                    if old_rent and unit.rent_min != old_rent:
+                        # Calculate change
+                        change = unit.rent_min - old_rent
+                        change_pct = (change / old_rent) * 100
+                        
+                        # Determine severity
+                        severity = 'info'
+                        if abs(change_pct) >= 10:
+                            severity = 'high'
+                        elif abs(change_pct) >= 5:
+                            severity = 'medium'
+                        
+                        # Create alert
+                        alert_type = 'price_increase' if change > 0 else 'price_decrease'
+                        
+                        self.supabase.table('market_alerts').insert({
+                            'property_id': competitor['property_id'],
+                            'competitor_id': competitor_id,
+                            'alert_type': alert_type,
+                            'severity': severity,
+                            'title': f"{competitor['name']} {unit.unit_type} price {'increased' if change > 0 else 'decreased'}",
+                            'description': f"${old_rent} → ${unit.rent_min} ({change_pct:+.1f}%)",
+                            'data': {
+                                'unit_type': unit.unit_type,
+                                'old_rent': old_rent,
+                                'new_rent': unit.rent_min,
+                                'change': change,
+                                'change_percent': round(change_pct, 1),
+                                'source': 'apartments_com'
+                            }
+                        }).execute()
+                        
+                        logger.info(f"Created price alert for {competitor['name']} {unit.unit_type}")
+                        
+        except Exception as e:
+            logger.error(f"Error checking price alerts: {e}")
 

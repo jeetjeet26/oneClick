@@ -19,7 +19,8 @@ from openai import OpenAI
 from scrapers.website_intelligence import (
     CommunityWebsiteScraper,
     CommunityKnowledge,
-    ExtractedContent
+    ExtractedContent,
+    FloorPlanUnit
 )
 from utils.supabase_client import get_supabase_client
 
@@ -144,15 +145,17 @@ class BrandIntelligenceExtractor:
     Uses CommunityWebsiteScraper for content extraction and GPT-4o-mini for analysis.
     """
     
-    def __init__(self, openai_api_key: Optional[str] = None):
+    def __init__(self, openai_api_key: Optional[str] = None, prefer_playwright: bool = True):
         """
         Initialize extractor
         
         Args:
             openai_api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
+            prefer_playwright: If True (default), use Playwright for scraping
+                              (better for bot-protected apartment websites)
         """
         self.openai_api_key = openai_api_key or os.environ.get('OPENAI_API_KEY')
-        self.scraper = CommunityWebsiteScraper()
+        self.scraper = CommunityWebsiteScraper(prefer_playwright=prefer_playwright)
         self.supabase = get_supabase_client()
         
         if self.openai_api_key:
@@ -167,7 +170,7 @@ class BrandIntelligenceExtractor:
         website_url: str,
         competitor_name: Optional[str] = None,
         force_refresh: bool = False
-    ) -> Tuple[Optional[BrandIntelligence], List[Dict[str, Any]]]:
+    ) -> Tuple[Optional[BrandIntelligence], List[Dict[str, Any]], List[FloorPlanUnit]]:
         """
         Extract brand intelligence for a single competitor
         
@@ -178,11 +181,11 @@ class BrandIntelligenceExtractor:
             force_refresh: Re-analyze even if recent data exists
             
         Returns:
-            Tuple of (BrandIntelligence, content_chunks)
+            Tuple of (BrandIntelligence, content_chunks, floor_plans)
         """
         if not website_url:
             logger.warning(f"No website URL for competitor {competitor_id}")
-            return None, []
+            return None, [], []
         
         # Check if we have recent analysis (within 7 days)
         if not force_refresh:
@@ -197,7 +200,7 @@ class BrandIntelligenceExtractor:
                     last_dt = datetime.fromisoformat(last_analyzed.replace('Z', '+00:00'))
                     if datetime.now(timezone.utc) - last_dt < timedelta(days=7):
                         logger.info(f"Skipping {competitor_name} - recent analysis exists")
-                        return None, []
+                        return None, [], []
         
         logger.info(f"Extracting brand intelligence for: {competitor_name or competitor_id}")
         
@@ -207,7 +210,7 @@ class BrandIntelligenceExtractor:
             
             if not knowledge.raw_chunks:
                 logger.warning(f"No content extracted from {website_url}")
-                return None, []
+                return None, [], []
             
             # Step 2: Prepare content chunks for storage
             content_chunks = self._prepare_content_chunks(
@@ -216,7 +219,12 @@ class BrandIntelligenceExtractor:
                 knowledge
             )
             
-            # Step 3: Analyze with AI
+            # Step 3: Extract floor plans from scraped knowledge
+            floor_plans = knowledge.floor_plans
+            if floor_plans:
+                logger.info(f"Extracted {len(floor_plans)} floor plans with pricing from website")
+            
+            # Step 4: Analyze with AI
             brand_intel = await self._analyze_with_ai(
                 competitor_id,
                 knowledge,
@@ -226,7 +234,7 @@ class BrandIntelligenceExtractor:
             if brand_intel:
                 brand_intel.pages_analyzed = knowledge.pages_scraped
             
-            return brand_intel, content_chunks
+            return brand_intel, content_chunks, floor_plans
             
         except Exception as e:
             logger.error(f"Error extracting brand intelligence for {competitor_id}: {e}")
@@ -358,14 +366,16 @@ class BrandIntelligenceExtractor:
     def store_brand_intelligence(
         self,
         brand_intel: BrandIntelligence,
-        content_chunks: List[Dict[str, Any]]
+        content_chunks: List[Dict[str, Any]],
+        floor_plans: Optional[List[FloorPlanUnit]] = None
     ) -> bool:
         """
-        Store brand intelligence and content chunks in database
+        Store brand intelligence, content chunks, and floor plans in database
         
         Args:
             brand_intel: Extracted brand intelligence
             content_chunks: Content chunks for semantic search
+            floor_plans: Optional floor plans with pricing data
             
         Returns:
             True if successful
@@ -387,12 +397,108 @@ class BrandIntelligenceExtractor:
                 batch = content_chunks[i:i+50]
                 self.supabase.table('competitor_content_chunks').insert(batch).execute()
             
+            # Store floor plans/pricing data if available
+            if floor_plans:
+                self._store_floor_plans(brand_intel.competitor_id, floor_plans)
+            
             logger.info(f"Stored brand intelligence for {brand_intel.competitor_id}")
             return True
             
         except Exception as e:
             logger.error(f"Error storing brand intelligence: {e}")
             return False
+    
+    def _store_floor_plans(
+        self,
+        competitor_id: str,
+        floor_plans: List[FloorPlanUnit]
+    ) -> None:
+        """
+        Store floor plans with pricing data to competitor_units table.
+        Updates existing units or creates new ones.
+        """
+        try:
+            # Get existing units
+            existing_result = self.supabase.table('competitor_units').select(
+                'id, unit_type, rent_min, rent_max, available_count'
+            ).eq('competitor_id', competitor_id).execute()
+            
+            existing_map = {u['unit_type']: u for u in (existing_result.data or [])}
+            
+            for fp in floor_plans:
+                existing = existing_map.get(fp.unit_type)
+                
+                if existing:
+                    # Check if price changed
+                    price_changed = (
+                        existing['rent_min'] != fp.rent_min or
+                        existing['rent_max'] != fp.rent_max
+                    )
+                    
+                    # Update existing unit
+                    update_data = {
+                        'bedrooms': fp.bedrooms,
+                        'bathrooms': fp.bathrooms,
+                        'sqft_min': fp.sqft_min,
+                        'sqft_max': fp.sqft_max,
+                        'rent_min': fp.rent_min,
+                        'rent_max': fp.rent_max,
+                        'deposit': fp.deposit,
+                        'available_count': fp.available_count,
+                        'move_in_specials': fp.move_in_specials,
+                        'last_updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    
+                    self.supabase.table('competitor_units').update(
+                        update_data
+                    ).eq('id', existing['id']).execute()
+                    
+                    # Add price history if changed
+                    if price_changed:
+                        self.supabase.table('competitor_price_history').insert({
+                            'competitor_unit_id': existing['id'],
+                            'rent_min': fp.rent_min,
+                            'rent_max': fp.rent_max,
+                            'available_count': fp.available_count,
+                            'source': 'website_scrape'
+                        }).execute()
+                        
+                        logger.info(f"Price change detected for {fp.unit_type}: "
+                                   f"${existing.get('rent_min')} -> ${fp.rent_min}")
+                else:
+                    # Insert new unit
+                    unit_data = {
+                        'competitor_id': competitor_id,
+                        'unit_type': fp.unit_type,
+                        'bedrooms': fp.bedrooms,
+                        'bathrooms': fp.bathrooms,
+                        'sqft_min': fp.sqft_min,
+                        'sqft_max': fp.sqft_max,
+                        'rent_min': fp.rent_min,
+                        'rent_max': fp.rent_max,
+                        'deposit': fp.deposit,
+                        'available_count': fp.available_count,
+                        'move_in_specials': fp.move_in_specials
+                    }
+                    
+                    result = self.supabase.table('competitor_units').insert(
+                        unit_data
+                    ).execute()
+                    
+                    # Add initial price history
+                    if result.data and (fp.rent_min or fp.rent_max):
+                        self.supabase.table('competitor_price_history').insert({
+                            'competitor_unit_id': result.data[0]['id'],
+                            'rent_min': fp.rent_min,
+                            'rent_max': fp.rent_max,
+                            'available_count': fp.available_count,
+                            'source': 'website_scrape'
+                        }).execute()
+            
+            logger.info(f"Stored {len(floor_plans)} floor plans for competitor {competitor_id}")
+            
+        except Exception as e:
+            logger.error(f"Error storing floor plans: {e}")
 
 
 class CompetitorBatchProcessor:
@@ -558,7 +664,7 @@ class CompetitorBatchProcessor:
     ) -> bool:
         """Process a single competitor"""
         try:
-            brand_intel, chunks = await self.extractor.extract_for_competitor(
+            brand_intel, chunks, floor_plans = await self.extractor.extract_for_competitor(
                 competitor_id=competitor['id'],
                 website_url=competitor['website_url'],
                 competitor_name=competitor.get('name'),
@@ -566,7 +672,7 @@ class CompetitorBatchProcessor:
             )
             
             if brand_intel:
-                return self.extractor.store_brand_intelligence(brand_intel, chunks)
+                return self.extractor.store_brand_intelligence(brand_intel, chunks, floor_plans)
             
             return True  # Skipped due to recent analysis
             
@@ -773,7 +879,8 @@ def extract_brand_intelligence_sync(
     competitor_id: str,
     website_url: str,
     competitor_name: Optional[str] = None,
-    openai_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None,
+    prefer_playwright: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
     Synchronous wrapper for brand intelligence extraction
@@ -783,14 +890,16 @@ def extract_brand_intelligence_sync(
         website_url: Website URL to scrape
         competitor_name: Optional name for context
         openai_api_key: OpenAI API key
+        prefer_playwright: If True (default), use Playwright for better
+                          compatibility with bot-protected apartment websites
         
     Returns:
         Brand intelligence dict or None
     """
-    extractor = BrandIntelligenceExtractor(openai_api_key)
+    extractor = BrandIntelligenceExtractor(openai_api_key, prefer_playwright=prefer_playwright)
     
     async def run():
-        brand_intel, chunks = await extractor.extract_for_competitor(
+        brand_intel, chunks, floor_plans = await extractor.extract_for_competitor(
             competitor_id=competitor_id,
             website_url=website_url,
             competitor_name=competitor_name,
@@ -798,7 +907,7 @@ def extract_brand_intelligence_sync(
         )
         
         if brand_intel:
-            extractor.store_brand_intelligence(brand_intel, chunks)
+            extractor.store_brand_intelligence(brand_intel, chunks, floor_plans)
             return brand_intel.to_db_dict()
         return None
     

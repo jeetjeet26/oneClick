@@ -351,14 +351,21 @@ def get_scraper_status():
     """
     Get scraper configuration and status.
     """
+    from scrapers.apify_apartments import is_apify_configured
+    
+    apify_configured = is_apify_configured()
+    
     return {
         "proxy_configured": bool(os.environ.get('SCRAPER_PROXY_URL')),
-        "supported_sources": ["apartments_com", "google_places"],
+        "apify_configured": apify_configured,
+        "apify_status": "ready" if apify_configured else "APIFY_API_TOKEN required",
+        "supported_sources": ["apify_apartments_com", "google_places"],
         "supabase_configured": bool(SUPABASE_URL and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")),
         "openai_configured": bool(os.environ.get('OPENAI_API_KEY')),
         "features": {
             "auto_discovery": True,
-            "price_tracking": True,
+            "price_tracking": apify_configured,
+            "apartments_com_scraping": apify_configured,
             "alert_generation": True,
             "brand_intelligence": True,
             "semantic_search": True
@@ -640,6 +647,549 @@ async def generate_competitor_embeddings(competitor_id: str):
             'success': False,
             'error': str(e)
         }
+
+
+# =============================================================================
+# APARTMENTS.COM SCRAPING ENDPOINTS
+# =============================================================================
+
+class ApartmentsComRefreshRequest(BaseModel):
+    competitor_id: str
+    url: Optional[str] = None  # Override URL if not using saved one
+
+
+class ApartmentsComBatchRequest(BaseModel):
+    property_id: str
+    competitor_ids: Optional[List[str]] = None  # None = all with apartments.com URLs
+
+
+class ApartmentsComDiscoverRequest(BaseModel):
+    property_id: str
+    city: str
+    state: str
+    max_results: int = 20
+    auto_add: bool = True
+
+
+class ApartmentsComAddListingRequest(BaseModel):
+    competitor_id: str
+    url: str
+
+
+@app.post('/scrape/apartments-com/refresh')
+async def refresh_from_apartments_com(request: ApartmentsComRefreshRequest):
+    """
+    Refresh pricing data for a single competitor from apartments.com.
+    
+    Uses Playwright for full JavaScript rendering to extract:
+    - Current rent prices (min/max)
+    - Unit availability
+    - Square footage
+    - Move-in specials
+    - Amenities
+    
+    Args:
+        competitor_id: Competitor UUID
+        url: Optional apartments.com URL (uses saved URL if not provided)
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        result = coordinator.refresh_competitor_from_apartments_com(
+            competitor_id=request.competitor_id,
+            apartments_com_url=request.url
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Apartments.com refresh error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.post('/scrape/apartments-com/batch')
+async def batch_refresh_from_apartments_com(
+    request: ApartmentsComBatchRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Batch refresh pricing data for multiple competitors from apartments.com.
+    
+    Processes all competitors with apartments.com URLs for a property.
+    Runs in background for large batches.
+    
+    Args:
+        property_id: Property UUID
+        competitor_ids: Optional list of specific competitor IDs
+    """
+    def run_batch():
+        try:
+            from scrapers.coordinator import ScrapingCoordinator
+            
+            proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+            coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+            
+            result = coordinator.batch_refresh_from_apartments_com(
+                property_id=request.property_id,
+                competitor_ids=request.competitor_ids
+            )
+            
+            logger.info(f"Batch refresh complete: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Batch refresh error: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    # Run in background
+    background_tasks.add_task(run_batch)
+    
+    return {
+        'success': True,
+        'message': 'Batch refresh started in background',
+        'property_id': request.property_id
+    }
+
+
+@app.post('/scrape/apartments-com/discover')
+async def discover_from_apartments_com(
+    request: ApartmentsComDiscoverRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Discover competitors by searching apartments.com for a city/state.
+    
+    Uses Playwright to:
+    1. Search apartments.com for the city/state
+    2. Extract property listings from search results
+    3. Scrape each property for detailed pricing data
+    4. Add new competitors to the database
+    
+    Args:
+        property_id: Property UUID to add competitors to
+        city: City name
+        state: State name or abbreviation
+        max_results: Maximum properties to scrape
+        auto_add: Auto-add discovered competitors to database
+    """
+    def run_discovery():
+        try:
+            from scrapers.coordinator import ScrapingCoordinator
+            
+            proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+            coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+            
+            result = coordinator.discover_and_scrape_apartments_com(
+                property_id=request.property_id,
+                city=request.city,
+                state=request.state,
+                max_results=request.max_results,
+                auto_add=request.auto_add
+            )
+            
+            logger.info(f"Apartments.com discovery complete: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Discovery error: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    # For small requests, run synchronously
+    if request.max_results <= 5:
+        result = run_discovery()
+        return result
+    
+    # Run in background for larger requests
+    background_tasks.add_task(run_discovery)
+    
+    return {
+        'success': True,
+        'message': f'Discovery started for {request.city}, {request.state}',
+        'property_id': request.property_id,
+        'status': 'processing'
+    }
+
+
+@app.post('/scrape/apartments-com/add-listing')
+async def add_apartments_com_listing(request: ApartmentsComAddListingRequest):
+    """
+    Add an apartments.com listing URL to an existing competitor and scrape it.
+    
+    Use this to manually associate a competitor with their apartments.com listing
+    for ongoing price tracking.
+    
+    Args:
+        competitor_id: Competitor UUID
+        url: Apartments.com listing URL
+    """
+    # Validate URL
+    if 'apartments.com' not in request.url:
+        return {
+            'success': False,
+            'error': 'URL must be from apartments.com'
+        }
+    
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        result = coordinator.add_apartments_com_listing(
+            competitor_id=request.competitor_id,
+            apartments_com_url=request.url
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Add listing error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.get('/scrape/apartments-com/property/{url:path}')
+async def scrape_apartments_com_property(url: str):
+    """
+    Scrape a single apartments.com property URL directly.
+    
+    Useful for testing or one-off scrapes without saving to database.
+    Returns full property data including units, amenities, etc.
+    
+    Args:
+        url: Full apartments.com property URL
+    """
+    # Decode URL if needed
+    from urllib.parse import unquote
+    url = unquote(url)
+    
+    if not url.startswith('http'):
+        url = 'https://' + url
+    
+    if 'apartments.com' not in url:
+        return {
+            'success': False,
+            'error': 'URL must be from apartments.com'
+        }
+    
+    try:
+        from scrapers.apartments_com import ApartmentsComScraper
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        scraper = ApartmentsComScraper(proxy_url=proxy_url, use_playwright=True)
+        
+        property_data = scraper.scrape_property(url)
+        
+        if property_data:
+            return {
+                'success': True,
+                'data': property_data.to_dict()
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Failed to scrape property'
+            }
+        
+    except Exception as e:
+        logger.error(f"Direct scrape error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+class FindListingsRequest(BaseModel):
+    property_id: str
+    competitor_ids: Optional[List[str]] = None
+    auto_scrape: bool = True
+    city: Optional[str] = None  # Override city for all competitors
+    state: Optional[str] = None  # Override state for all competitors
+
+
+@app.post('/scrape/apartments-com/find-listings')
+async def find_apartments_com_listings(
+    request: FindListingsRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Search apartments.com for existing competitors and link their listings.
+    
+    For each competitor without an apartments.com URL:
+    1. Search apartments.com by name and city/state
+    2. Match results using name similarity and address
+    3. If confident match found, save the apartments.com URL
+    4. Optionally auto-scrape pricing data
+    
+    Args:
+        property_id: Property UUID
+        competitor_ids: Optional specific competitor IDs
+        auto_scrape: Auto-scrape pricing after finding URLs (default: true)
+        city: Override city for search (uses this instead of parsing from addresses)
+        state: Override state for search
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        # The coordinator method is now async, so await it directly
+        result = await coordinator.find_apartments_com_listings(
+            property_id=request.property_id,
+            competitor_ids=request.competitor_ids,
+            auto_scrape=request.auto_scrape,
+            city_override=request.city,
+            state_override=request.state
+        )
+        
+        logger.info(f"Find listings complete: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Find listings error: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@app.get('/scrape/apartments-com/status')
+def get_apartments_com_scraper_status():
+    """
+    Get apartments.com scraper configuration and status.
+    
+    Now uses Apify's managed scraper (epctex/apartments-scraper) instead of
+    the blocked Playwright/httpx scraper.
+    """
+    from scrapers.apify_apartments import is_apify_configured
+    
+    apify_configured = is_apify_configured()
+    
+    # Also check legacy scraper availability for reference
+    try:
+        from scrapers.apartments_com import PLAYWRIGHT_AVAILABLE
+        playwright_available = PLAYWRIGHT_AVAILABLE
+    except:
+        playwright_available = False
+    
+    return {
+        "scraper_type": "apify" if apify_configured else "legacy (blocked)",
+        "apify_configured": apify_configured,
+        "apify_actor": "epctex/apartments-scraper",
+        "legacy_playwright_available": playwright_available,
+        "proxy_configured": bool(os.environ.get('SCRAPER_PROXY_URL')),
+        "features": {
+            "search_by_location": apify_configured,
+            "property_scraping": apify_configured,
+            "pricing_extraction": apify_configured,
+            "unit_details": apify_configured,
+            "amenities_extraction": apify_configured,
+            "specials_detection": apify_configured,
+            "batch_refresh": apify_configured,
+            "auto_find_listings": apify_configured
+        },
+        "status": "ready" if apify_configured else "APIFY_API_TOKEN required",
+        "setup_instructions": None if apify_configured else (
+            "Set APIFY_API_TOKEN environment variable. "
+            "Get your token from https://console.apify.com/account#/integrations"
+        )
+    }
+
+
+# =============================================================================
+# WEBSITE-BASED PRICING REFRESH ENDPOINTS
+# =============================================================================
+
+class WebsiteRefreshRequest(BaseModel):
+    competitor_id: str
+    url: Optional[str] = None  # Override URL if not using saved one
+
+
+class WebsiteBatchRequest(BaseModel):
+    property_id: str
+    competitor_ids: Optional[List[str]] = None  # None = all with website URLs
+    prefer_website: bool = True  # Prefer website over apartments.com
+
+
+@app.post('/scrape/website/refresh')
+async def refresh_from_website(request: WebsiteRefreshRequest):
+    """
+    Refresh pricing data for a single competitor from their website.
+    
+    Scrapes the competitor's own website for floor plans and pricing.
+    This is the PREFERRED method as it gets data directly from the source,
+    rather than relying on third-party listings like apartments.com.
+    
+    Extracts:
+    - Floor plan types (Studio, 1BR, 2BR, etc.)
+    - Rent ranges (min/max)
+    - Square footage
+    - Move-in specials
+    - Amenities
+    
+    Args:
+        competitor_id: Competitor UUID
+        url: Optional website URL (uses saved URL if not provided)
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        result = coordinator.refresh_competitor_from_website(
+            competitor_id=request.competitor_id,
+            website_url=request.url
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Website refresh error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.post('/scrape/website/batch')
+async def batch_refresh_from_website(
+    request: WebsiteBatchRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Batch refresh pricing data for multiple competitors from their websites.
+    
+    This is the PREFERRED method for refreshing pricing data as it gets
+    information directly from competitor websites rather than third-party
+    ILS listings like apartments.com.
+    
+    Args:
+        property_id: Property UUID
+        competitor_ids: Optional list of specific competitor IDs (None = all with website URLs)
+        prefer_website: If True (default), prioritize website over apartments.com
+    """
+    def run_batch():
+        try:
+            from scrapers.coordinator import ScrapingCoordinator
+            
+            proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+            coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+            
+            result = coordinator.batch_refresh_from_website(
+                property_id=request.property_id,
+                competitor_ids=request.competitor_ids
+            )
+            
+            logger.info(f"Website batch refresh complete: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Website batch refresh error: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    # Run in background
+    background_tasks.add_task(run_batch)
+    
+    return {
+        'success': True,
+        'message': 'Website batch refresh started in background',
+        'property_id': request.property_id,
+        'source': 'website'
+    }
+
+
+@app.post('/scrape/refresh-pricing')
+async def refresh_pricing(request: WebsiteBatchRequest):
+    """
+    Refresh pricing data for all competitors of a property.
+    
+    PRIORITIZES competitor websites over apartments.com listings.
+    Falls back to apartments.com only if website scraping doesn't yield pricing.
+    
+    This is the main endpoint for the "Refresh Pricing" button in the UI.
+    Runs SYNCHRONOUSLY so the frontend can show accurate progress.
+    
+    Args:
+        property_id: Property UUID
+        competitor_ids: Optional list of specific competitor IDs
+        prefer_website: If True (default), try website first before apartments.com
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        # Run synchronously so frontend waits for completion
+        result = coordinator.refresh_all_competitors(
+            property_id=request.property_id,
+            prefer_website=request.prefer_website
+        )
+        
+        logger.info(f"Pricing refresh complete: {result}")
+        
+        return {
+            'success': True,
+            'message': 'Pricing refresh complete',
+            'property_id': request.property_id,
+            **result
+        }
+        
+    except Exception as e:
+        logger.error(f"Pricing refresh error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'property_id': request.property_id
+        }
+
+
+@app.get('/scrape/website/status')
+def get_website_scraper_status():
+    """
+    Get website scraper configuration and status.
+    
+    The website scraper directly scrapes competitor websites for pricing data.
+    This is preferred over apartments.com as it gets data from the source.
+    """
+    try:
+        from scrapers.website_intelligence import PLAYWRIGHT_AVAILABLE
+        playwright_available = PLAYWRIGHT_AVAILABLE
+    except:
+        playwright_available = False
+    
+    return {
+        "scraper_type": "website_intelligence",
+        "status": "ready",
+        "playwright_fallback": playwright_available,
+        "features": {
+            "floor_plan_extraction": True,
+            "pricing_extraction": True,
+            "sqft_extraction": True,
+            "amenities_extraction": True,
+            "specials_extraction": True,
+            "brand_intelligence": True,
+            "batch_refresh": True
+        },
+        "supported_patterns": [
+            "Structured floor plan sections",
+            "Pricing tables",
+            "Text-based pricing (e.g., 'Studio from $1,200')",
+            "Price ranges (e.g., '$1,200 - $1,500')"
+        ],
+        "notes": [
+            "Preferred over apartments.com for accurate pricing",
+            "Works with most apartment community websites",
+            "Uses Playwright fallback for bot-protected sites"
+        ]
+    }
 
 
 if __name__ == "__main__":

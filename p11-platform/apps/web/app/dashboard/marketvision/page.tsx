@@ -23,7 +23,9 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
-  Sparkles
+  Sparkles,
+  Search,
+  Link2
 } from 'lucide-react'
 
 interface Competitor {
@@ -49,6 +51,12 @@ interface ScrapeStatus {
   isLoading: boolean
   message: string | null
   type: 'info' | 'success' | 'error' | null
+  progress?: {
+    current: number
+    total: number
+    stage: 'starting' | 'scraping' | 'processing' | 'complete'
+    details?: string
+  }
 }
 
 export default function MarketVisionPage() {
@@ -70,6 +78,8 @@ export default function MarketVisionPage() {
     autoAdd: true,
     extractBrandIntelligence: true
   })
+  const [showCityStateModal, setShowCityStateModal] = useState(false)
+  const [cityStateInput, setCityStateInput] = useState({ city: '', state: '' })
 
   const handleRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1)
@@ -152,28 +162,203 @@ export default function MarketVisionPage() {
   const handleRefreshPrices = async () => {
     if (!currentProperty?.id) return
 
-    setScrapeStatus({ isLoading: true, message: 'Refreshing competitor prices...', type: 'info' })
+    // Start with progress indication
+    setScrapeStatus({ 
+      isLoading: true, 
+      message: 'Starting price refresh...', 
+      type: 'info',
+      progress: {
+        current: 0,
+        total: 100,
+        stage: 'starting',
+        details: 'Connecting to competitor websites'
+      }
+    })
+
+    // Simulate progress while waiting for backend
+    let progressInterval: NodeJS.Timeout | null = null
+    let currentProgress = 0
+    
+    const updateProgress = (stage: 'starting' | 'scraping' | 'processing' | 'complete', details: string, targetProgress: number) => {
+      setScrapeStatus(prev => ({
+        ...prev,
+        message: `Refreshing competitor prices...`,
+        progress: {
+          current: targetProgress,
+          total: 100,
+          stage,
+          details
+        }
+      }))
+    }
+
+    // Start progress animation
+    progressInterval = setInterval(() => {
+      currentProgress += Math.random() * 5
+      if (currentProgress < 30) {
+        updateProgress('starting', 'Connecting to competitor websites...', Math.min(currentProgress, 25))
+      } else if (currentProgress < 70) {
+        updateProgress('scraping', 'Scraping pricing data from websites...', Math.min(currentProgress, 65))
+      } else if (currentProgress < 90) {
+        updateProgress('processing', 'Processing and comparing prices...', Math.min(currentProgress, 85))
+      }
+    }, 500)
 
     try {
+      // The API now runs synchronously and waits for completion
+      // Set a 10 minute timeout since scraping multiple competitors takes time
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000) // 10 minutes
+      
       const res = await fetch('/api/marketvision/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'refresh',
           propertyId: currentProperty.id
+        }),
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+
+      const data = await res.json()
+
+      // Clear the progress interval since we got a response
+      if (progressInterval) {
+        clearInterval(progressInterval)
+        progressInterval = null
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Refresh failed')
+      }
+
+      // Build detailed status message from actual results (data now contains full result)
+      const result = data
+      let statusMessage = 'Price refresh complete'
+      
+      if (result) {
+        const websiteUpdated = result.website_updated || 0
+        const ilsUpdated = result.ils_updated || 0
+        const totalUpdated = result.updated_count || websiteUpdated + ilsUpdated
+        const totalCompetitors = result.total_competitors || 0
+        const errorCount = result.error_count || 0
+        
+        if (totalUpdated > 0) {
+          if (websiteUpdated > 0 && ilsUpdated > 0) {
+            statusMessage = `Updated ${totalUpdated} competitors (${websiteUpdated} from websites, ${ilsUpdated} from listings)`
+          } else if (websiteUpdated > 0) {
+            statusMessage = `Updated ${websiteUpdated} competitors from websites`
+          } else if (ilsUpdated > 0) {
+            statusMessage = `Updated ${ilsUpdated} competitors from listings`
+          } else {
+            statusMessage = `Updated ${totalUpdated} competitors`
+          }
+        } else if (totalCompetitors > 0) {
+          if (errorCount > 0 && errorCount === totalCompetitors) {
+            statusMessage = `Checked ${totalCompetitors} competitors - websites unavailable`
+          } else if (errorCount > 0) {
+            statusMessage = `Checked ${totalCompetitors} competitors - some sites unavailable`
+          } else {
+            statusMessage = `Checked ${totalCompetitors} competitors - no price changes`
+          }
+        }
+      }
+
+      // Show success immediately since scraping is complete
+      setScrapeStatus({
+        isLoading: false,
+        message: statusMessage,
+        type: 'success',
+        progress: {
+          current: 100,
+          total: 100,
+          stage: 'complete',
+          details: 'Price refresh complete!'
+        }
+      })
+
+      // Refresh the competitor data
+      handleRefresh()
+
+      // Auto-dismiss after showing success
+      setTimeout(() => {
+        setScrapeStatus({ isLoading: false, message: null, type: null })
+      }, 5000)
+
+    } catch (err) {
+      // Clear the progress interval
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
+      
+      console.error('Refresh error:', err)
+      setScrapeStatus({
+        isLoading: false,
+        message: err instanceof Error ? err.message : 'Refresh failed',
+        type: 'error'
+      })
+    }
+  }
+
+  const handleFindApartmentsComListings = async (city?: string, state?: string) => {
+    if (!currentProperty?.id) return
+
+    setScrapeStatus({ 
+      isLoading: true, 
+      message: 'Searching apartments.com for competitor listings...', 
+      type: 'info' 
+    })
+
+    try {
+      const res = await fetch('/api/marketvision/apartments-com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'find_listings',
+          propertyId: currentProperty.id,
+          autoScrape: true,
+          city: city || undefined,
+          state: state || undefined
         })
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || 'Refresh failed')
+        throw new Error(data.error || 'Search failed')
+      }
+
+      // Check if all failed due to missing city/state
+      const allMissingCityState = data.not_found_listings?.every(
+        (l: { reason?: string }) => l.reason === 'Missing city/state'
+      )
+      
+      if (data.found === 0 && data.not_found > 0 && allMissingCityState && !city && !state) {
+        // Show modal to get city/state
+        setScrapeStatus({ isLoading: false, message: null, type: null })
+        setShowCityStateModal(true)
+        return
+      }
+
+      // Build status message
+      let statusMessage = ''
+      if (data.found > 0) {
+        statusMessage = `Found ${data.found} apartments.com listings out of ${data.searched} competitors`
+        if (data.found_listings?.some((l: { units_scraped?: number }) => l.units_scraped)) {
+          statusMessage += ' - pricing data scraped!'
+        }
+      } else if (data.searched > 0) {
+        statusMessage = `Searched ${data.searched} competitors but no apartments.com matches found`
+      } else {
+        statusMessage = data.message || 'All competitors already have apartments.com URLs'
       }
 
       setScrapeStatus({
         isLoading: false,
-        message: 'Price refresh started in background',
-        type: 'success'
+        message: statusMessage,
+        type: data.found > 0 ? 'success' : 'info'
       })
 
       // Refresh after delay
@@ -183,13 +368,18 @@ export default function MarketVisionPage() {
       }, 5000)
 
     } catch (err) {
-      console.error('Refresh error:', err)
+      console.error('Find listings error:', err)
       setScrapeStatus({
         isLoading: false,
-        message: err instanceof Error ? err.message : 'Refresh failed',
+        message: err instanceof Error ? err.message : 'Search failed',
         type: 'error'
       })
     }
+  }
+  
+  const handleCityStateSubmit = () => {
+    setShowCityStateModal(false)
+    handleFindApartmentsComListings(cityStateInput.city, cityStateInput.state)
   }
 
   const handleAddCompetitor = async (data: Record<string, unknown>) => {
@@ -271,6 +461,19 @@ export default function MarketVisionPage() {
             Auto-Discover
           </button>
           <button
+            onClick={() => handleFindApartmentsComListings()}
+            disabled={scrapeStatus.isLoading || !currentProperty}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Find apartments.com listings for existing competitors"
+          >
+            {scrapeStatus.isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Link2 className="w-4 h-4" />
+            )}
+            Find Listings
+          </button>
+          <button
             onClick={handleRefreshPrices}
             disabled={scrapeStatus.isLoading || !currentProperty}
             className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
@@ -288,31 +491,136 @@ export default function MarketVisionPage() {
         </div>
       </div>
 
-      {/* Scrape Status Banner */}
+      {/* Scrape Status Banner with Progress Bar */}
       {scrapeStatus.message && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg ${
-          scrapeStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300' :
-          scrapeStatus.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300' :
-          'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+        <div className={`rounded-xl border overflow-hidden ${
+          scrapeStatus.type === 'success' 
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' 
+            : scrapeStatus.type === 'error' 
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+              : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
         }`}>
-          {scrapeStatus.isLoading ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : scrapeStatus.type === 'success' ? (
-            <CheckCircle className="w-5 h-5" />
-          ) : scrapeStatus.type === 'error' ? (
-            <AlertCircle className="w-5 h-5" />
-          ) : (
-            <Radar className="w-5 h-5" />
+          {/* Progress Bar */}
+          {scrapeStatus.progress && scrapeStatus.isLoading && (
+            <div className="h-1.5 bg-black/5 dark:bg-white/5 relative overflow-hidden">
+              <div 
+                className={`h-full transition-all duration-500 ease-out ${
+                  scrapeStatus.type === 'success' 
+                    ? 'bg-emerald-500' 
+                    : scrapeStatus.type === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-blue-500'
+                }`}
+                style={{ width: `${scrapeStatus.progress.current}%` }}
+              />
+              {/* Animated shimmer effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" 
+                   style={{ backgroundSize: '200% 100%' }} />
+            </div>
           )}
-          <span className="flex-1">{scrapeStatus.message}</span>
-          {!scrapeStatus.isLoading && (
-            <button
-              onClick={() => setScrapeStatus({ isLoading: false, message: null, type: null })}
-              className="p-1 hover:bg-black/10 rounded"
-            >
-              ×
-            </button>
+          
+          {/* Completed Progress Bar */}
+          {scrapeStatus.progress && !scrapeStatus.isLoading && scrapeStatus.type === 'success' && (
+            <div className="h-1.5 bg-emerald-500" />
           )}
+          
+          {/* Status Content */}
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              {scrapeStatus.isLoading ? (
+                <div className="relative">
+                  <Loader2 className={`w-5 h-5 animate-spin ${
+                    scrapeStatus.type === 'success' ? 'text-emerald-600' :
+                    scrapeStatus.type === 'error' ? 'text-red-600' : 'text-blue-600'
+                  }`} />
+                </div>
+              ) : scrapeStatus.type === 'success' ? (
+                <CheckCircle className="w-5 h-5 text-emerald-600" />
+              ) : scrapeStatus.type === 'error' ? (
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              ) : (
+                <Radar className="w-5 h-5 text-blue-600" />
+              )}
+              
+              <div className="flex-1 min-w-0">
+                <div className={`font-medium ${
+                  scrapeStatus.type === 'success' ? 'text-emerald-700 dark:text-emerald-300' :
+                  scrapeStatus.type === 'error' ? 'text-red-700 dark:text-red-300' :
+                  'text-blue-700 dark:text-blue-300'
+                }`}>
+                  {scrapeStatus.message}
+                </div>
+                
+                {/* Progress Details */}
+                {scrapeStatus.progress && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-sm ${
+                      scrapeStatus.type === 'success' ? 'text-emerald-600/70 dark:text-emerald-400/70' :
+                      scrapeStatus.type === 'error' ? 'text-red-600/70 dark:text-red-400/70' :
+                      'text-blue-600/70 dark:text-blue-400/70'
+                    }`}>
+                      {scrapeStatus.progress.details}
+                    </span>
+                    {scrapeStatus.isLoading && (
+                      <span className={`text-sm font-mono ${
+                        scrapeStatus.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
+                        scrapeStatus.type === 'error' ? 'text-red-600 dark:text-red-400' :
+                        'text-blue-600 dark:text-blue-400'
+                      }`}>
+                        {Math.round(scrapeStatus.progress.current)}%
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {!scrapeStatus.isLoading && (
+                <button
+                  onClick={() => setScrapeStatus({ isLoading: false, message: null, type: null })}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    scrapeStatus.type === 'success' 
+                      ? 'hover:bg-emerald-200 dark:hover:bg-emerald-800' 
+                      : scrapeStatus.type === 'error'
+                        ? 'hover:bg-red-200 dark:hover:bg-red-800'
+                        : 'hover:bg-blue-200 dark:hover:bg-blue-800'
+                  }`}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            
+            {/* Stage Indicator */}
+            {scrapeStatus.progress && scrapeStatus.isLoading && (
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-black/5 dark:border-white/5">
+                {(['starting', 'scraping', 'processing', 'complete'] as const).map((stage, idx) => (
+                  <div key={stage} className="flex items-center gap-1">
+                    <div className={`w-2 h-2 rounded-full transition-colors ${
+                      scrapeStatus.progress?.stage === stage 
+                        ? 'bg-blue-500 animate-pulse' 
+                        : (['starting', 'scraping', 'processing', 'complete'].indexOf(scrapeStatus.progress?.stage || 'starting') > idx)
+                          ? 'bg-emerald-500'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                    }`} />
+                    <span className={`text-xs capitalize ${
+                      scrapeStatus.progress?.stage === stage 
+                        ? 'text-blue-600 dark:text-blue-400 font-medium' 
+                        : 'text-gray-500'
+                    }`}>
+                      {stage}
+                    </span>
+                    {idx < 3 && (
+                      <div className={`w-6 h-0.5 mx-1 ${
+                        (['starting', 'scraping', 'processing', 'complete'].indexOf(scrapeStatus.progress?.stage || 'starting') > idx)
+                          ? 'bg-emerald-400'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                      }`} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -453,6 +761,75 @@ export default function MarketVisionPage() {
             setEditingCompetitor(comp)
           }}
         />
+      )}
+
+      {/* City/State Input Modal */}
+      {showCityStateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Search className="w-5 h-5 text-indigo-500" />
+                Specify Location
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Could not detect city/state from competitor addresses. Please enter the location to search.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={cityStateInput.city}
+                  onChange={(e) => setCityStateInput(s => ({ ...s, city: e.target.value }))}
+                  placeholder="e.g., San Diego"
+                  className="w-full px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  State (2-letter code)
+                </label>
+                <input
+                  type="text"
+                  value={cityStateInput.state}
+                  onChange={(e) => setCityStateInput(s => ({ ...s, state: e.target.value.toUpperCase().slice(0, 2) }))}
+                  placeholder="e.g., CA"
+                  maxLength={2}
+                  className="w-full px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase"
+                />
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  This will search apartments.com for all your competitors in this location and link their listings.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCityStateModal(false)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCityStateSubmit}
+                disabled={!cityStateInput.city || !cityStateInput.state}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Search className="w-4 h-4" />
+                Search Apartments.com
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Auto-Discover Modal */}

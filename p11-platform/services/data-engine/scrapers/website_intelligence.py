@@ -1,8 +1,14 @@
 """
 Community Website Intelligence Scraper
 Crawls community websites and extracts structured knowledge for AI training
+
+Uses a hybrid approach:
+- Playwright for JavaScript-heavy sites
+- LLM (GPT-4o-mini) for intelligent pricing extraction
+- Regex patterns as fallback
 """
 
+import os
 import re
 import json
 import logging
@@ -15,6 +21,13 @@ from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
+
+# OpenAI for intelligent extraction
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 # Playwright for fallback on bot-protected sites
 try:
@@ -38,6 +51,35 @@ class ExtractedContent:
 
 
 @dataclass
+class FloorPlanUnit:
+    """A single floor plan/unit type extracted from website"""
+    unit_type: str  # "Studio", "1BR", "2BR", etc.
+    bedrooms: int
+    bathrooms: float = 1.0
+    sqft_min: Optional[int] = None
+    sqft_max: Optional[int] = None
+    rent_min: Optional[float] = None
+    rent_max: Optional[float] = None
+    deposit: Optional[float] = None
+    available_count: int = 0
+    move_in_specials: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "unit_type": self.unit_type,
+            "bedrooms": self.bedrooms,
+            "bathrooms": self.bathrooms,
+            "sqft_min": self.sqft_min,
+            "sqft_max": self.sqft_max,
+            "rent_min": self.rent_min,
+            "rent_max": self.rent_max,
+            "deposit": self.deposit,
+            "available_count": self.available_count,
+            "move_in_specials": self.move_in_specials
+        }
+
+
+@dataclass
 class CommunityKnowledge:
     """Structured knowledge extracted from a community website"""
     website_url: str
@@ -46,6 +88,7 @@ class CommunityKnowledge:
     pet_policy: Optional[Dict[str, Any]] = None
     parking_info: Optional[Dict[str, Any]] = None
     unit_types: List[str] = field(default_factory=list)
+    floor_plans: List[FloorPlanUnit] = field(default_factory=list)  # Extracted pricing data
     specials: List[str] = field(default_factory=list)
     contact_info: Optional[Dict[str, Any]] = None
     office_hours: Optional[str] = None
@@ -64,6 +107,7 @@ class CommunityKnowledge:
             "pet_policy": self.pet_policy,
             "parking_info": self.parking_info,
             "unit_types": self.unit_types,
+            "floor_plans": [fp.to_dict() for fp in self.floor_plans],
             "specials": self.specials,
             "contact_info": self.contact_info,
             "office_hours": self.office_hours,
@@ -149,19 +193,42 @@ class CommunityWebsiteScraper:
     # Track failed domains for playwright fallback
     _blocked_domains: Set[str] = set()
     
-    def __init__(self, openai_api_key: Optional[str] = None, use_playwright_fallback: bool = True):
+    def __init__(
+        self, 
+        openai_api_key: Optional[str] = None, 
+        use_playwright_fallback: bool = True,
+        prefer_playwright: bool = True,
+        use_llm_extraction: bool = True
+    ):
         """
         Initialize scraper with optional OpenAI key for AI-powered extraction.
         
         Args:
             openai_api_key: Optional OpenAI API key for structured extraction
             use_playwright_fallback: Use Playwright browser for bot-protected sites
+            prefer_playwright: If True, try Playwright FIRST before httpx (recommended
+                              for apartment websites which often have bot protection)
+            use_llm_extraction: If True, use GPT-4o-mini for intelligent floor plan/pricing
+                               extraction (more accurate but has API cost)
         """
-        self.openai_api_key = openai_api_key
+        self.openai_api_key = openai_api_key or os.environ.get('OPENAI_API_KEY')
         self.use_playwright_fallback = use_playwright_fallback and PLAYWRIGHT_AVAILABLE
+        self.prefer_playwright = prefer_playwright and PLAYWRIGHT_AVAILABLE
+        self.use_llm_extraction = use_llm_extraction and OPENAI_AVAILABLE and bool(self.openai_api_key)
         self.ua = UserAgent()
         self._scraped_urls: Set[str] = set()
         self._failed_httpx_count: int = 0
+        
+        # Initialize OpenAI client if available
+        if self.use_llm_extraction:
+            self.openai_client = OpenAI(api_key=self.openai_api_key)
+            logger.info("LLM extraction enabled (GPT-4o-mini)")
+        else:
+            self.openai_client = None
+            if use_llm_extraction and not OPENAI_AVAILABLE:
+                logger.warning("LLM extraction requested but openai package not installed")
+            elif use_llm_extraction and not self.openai_api_key:
+                logger.warning("LLM extraction requested but OPENAI_API_KEY not set")
     
     def _get_headers(self, referer: Optional[str] = None) -> Dict[str, str]:
         """Generate realistic browser headers that bypass bot detection"""
@@ -409,6 +476,575 @@ class CommunityWebsiteScraper:
         
         return sorted(list(unit_types))
     
+    def _extract_floor_plans(self, soup: BeautifulSoup, content: str) -> List[FloorPlanUnit]:
+        """
+        Extract floor plans with pricing data from website content.
+        
+        Uses a hybrid approach:
+        1. Try LLM extraction first (if enabled) - most accurate
+        2. Fall back to regex patterns if LLM fails or is disabled
+        """
+        floor_plans: List[FloorPlanUnit] = []
+        
+        # Track what we've found to avoid duplicates
+        found_units = set()
+        
+        # Log content length for debugging
+        logger.debug(f"[FloorPlans] Processing content: {len(content)} chars")
+        
+        # HYBRID APPROACH: Try LLM extraction first (more accurate)
+        if self.use_llm_extraction and self.openai_client:
+            logger.info("[FloorPlans] Using LLM extraction (GPT-4o-mini)")
+            llm_floor_plans = self._extract_floor_plans_with_llm(content)
+            
+            if llm_floor_plans:
+                logger.info(f"[FloorPlans] LLM extracted {len(llm_floor_plans)} floor plans")
+                return llm_floor_plans
+            else:
+                logger.warning("[FloorPlans] LLM extraction returned no results, falling back to regex")
+        
+        # FALLBACK: Pattern-based extraction
+        logger.info("[FloorPlans] Using regex-based extraction")
+        
+        # Pattern 1: Look for structured floor plan sections
+        sections_found = soup.find_all(['section', 'div', 'article'], 
+                                       class_=re.compile(r'floor.?plan|pricing|availability|unit|apartment', re.I))
+        logger.debug(f"[FloorPlans] Found {len(sections_found)} structured sections")
+        
+        for section in sections_found:
+            self._extract_floor_plans_from_section(section, floor_plans, found_units)
+        
+        # Pattern 2: Look for tables with pricing data
+        tables_found = soup.find_all('table')
+        logger.debug(f"[FloorPlans] Found {len(tables_found)} tables")
+        
+        for table in tables_found:
+            self._extract_floor_plans_from_table(table, floor_plans, found_units)
+        
+        logger.debug(f"[FloorPlans] After structured extraction: {len(floor_plans)} floor plans")
+        
+        # Pattern 3: Text-based extraction for simpler sites (and RentCafe/Yardi)
+        self._extract_floor_plans_from_text(content, floor_plans, found_units)
+        
+        logger.debug(f"[FloorPlans] After text extraction: {len(floor_plans)} floor plans")
+        
+        return floor_plans
+    
+    def _extract_floor_plans_with_llm(self, content: str) -> List[FloorPlanUnit]:
+        """
+        Use GPT-4o-mini to intelligently extract floor plan and pricing data.
+        
+        This is more accurate than regex patterns because:
+        - Understands context (distinguishes rent from deposit from fees)
+        - Handles any page format/layout
+        - Can extract data even when it's scattered across the page
+        """
+        if not self.openai_client:
+            return []
+        
+        # Normalize and truncate content to fit token limits
+        normalized_content = ' '.join(content.split())
+        # GPT-4o-mini has 128k context, but we'll limit to ~15k chars for cost efficiency
+        max_chars = 15000
+        if len(normalized_content) > max_chars:
+            normalized_content = normalized_content[:max_chars]
+        
+        # Prompt for structured extraction
+        prompt = """You are an expert at extracting apartment pricing data from website content.
+
+Analyze the following apartment website content and extract ALL floor plan/pricing information you can find.
+
+For each unique floor plan type, extract:
+- unit_type: The floor plan name (e.g., "Studio", "1BR", "2BR", "A1", "B2", etc.)
+- bedrooms: Number of bedrooms (0 for studio)
+- bathrooms: Number of bathrooms (default 1.0 if not specified)
+- sqft_min: Minimum square footage (null if not found)
+- sqft_max: Maximum square footage (null if not found, same as sqft_min if only one value)
+- rent_min: Minimum rent price in dollars (null if not found or "Call for pricing")
+- rent_max: Maximum rent price (null if not found, same as rent_min if only one value)
+- deposit: Security deposit amount (null if not found)
+- available_count: Number of units available (0 if not specified)
+- move_in_specials: Any move-in specials or promotions mentioned (null if none)
+
+IMPORTANT:
+- Extract ACTUAL prices found, not fees or deposits mixed with rent
+- "Base Rent" is the rent price
+- If a unit says "Call for details" or "Inquire", set rent to null
+- Group similar units (e.g., all "1 Bed" units into "1BR" unless they have distinct names like "A1", "A2")
+- Return an empty array [] if no pricing data is found
+
+Website Content:
+---
+{content}
+---
+
+Return ONLY valid JSON in this exact format:
+{{
+  "floor_plans": [
+    {{
+      "unit_type": "Studio",
+      "bedrooms": 0,
+      "bathrooms": 1.0,
+      "sqft_min": 399,
+      "sqft_max": 399,
+      "rent_min": 2233,
+      "rent_max": 2233,
+      "deposit": 500,
+      "available_count": 4,
+      "move_in_specials": null
+    }}
+  ]
+}}"""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a precise data extraction assistant. Extract apartment pricing data and return valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt.format(content=normalized_content)
+                    }
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=4000,
+                temperature=0.1  # Low temperature for consistent extraction
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            floor_plans_data = result.get('floor_plans', [])
+            
+            # Convert to FloorPlanUnit objects
+            floor_plans = []
+            for fp in floor_plans_data:
+                try:
+                    floor_plan = FloorPlanUnit(
+                        unit_type=fp.get('unit_type', 'Unknown'),
+                        bedrooms=fp.get('bedrooms', 0),
+                        bathrooms=fp.get('bathrooms', 1.0),
+                        sqft_min=fp.get('sqft_min'),
+                        sqft_max=fp.get('sqft_max'),
+                        rent_min=fp.get('rent_min'),
+                        rent_max=fp.get('rent_max'),
+                        deposit=fp.get('deposit'),
+                        available_count=fp.get('available_count', 0),
+                        move_in_specials=fp.get('move_in_specials')
+                    )
+                    
+                    # Only include if we have either rent or sqft data
+                    if floor_plan.rent_min or floor_plan.sqft_min:
+                        floor_plans.append(floor_plan)
+                        logger.info(f"[LLM] Extracted: {floor_plan.unit_type} - ${floor_plan.rent_min}, {floor_plan.sqft_min} sqft, {floor_plan.available_count} available")
+                        
+                except Exception as e:
+                    logger.warning(f"[LLM] Error parsing floor plan: {e}")
+                    continue
+            
+            return floor_plans
+            
+        except Exception as e:
+            logger.error(f"[LLM] Floor plan extraction failed: {e}")
+            return []
+    
+    def _extract_floor_plans_from_section(
+        self, 
+        section: Any, 
+        floor_plans: List[FloorPlanUnit], 
+        found_units: set
+    ) -> None:
+        """Extract floor plan data from a structured section element"""
+        # Look for individual floor plan cards
+        cards = section.find_all(['div', 'article', 'li'], 
+                                  class_=re.compile(r'card|item|plan|unit', re.I))
+        
+        if not cards:
+            cards = [section]  # Treat section itself as a card
+        
+        for card in cards:
+            card_text = card.get_text(separator=' ', strip=True)
+            # Normalize whitespace
+            card_text = ' '.join(card_text.split())
+            
+            # Extract bedroom count
+            bedrooms = self._parse_bedroom_count(card_text)
+            if bedrooms is None:
+                continue
+            
+            unit_type = "Studio" if bedrooms == 0 else f"{bedrooms}BR"
+            
+            # Skip if already found this unit type
+            if unit_type in found_units:
+                continue
+            
+            # Extract bathrooms
+            bathrooms = self._parse_bathroom_count(card_text)
+            
+            # Extract rent
+            rent_min, rent_max = self._parse_rent_range(card_text)
+            
+            # Extract sqft
+            sqft_min, sqft_max = self._parse_sqft_range(card_text)
+            
+            # Only add if we found pricing or sqft
+            if rent_min or sqft_min:
+                found_units.add(unit_type)
+                floor_plans.append(FloorPlanUnit(
+                    unit_type=unit_type,
+                    bedrooms=bedrooms,
+                    bathrooms=bathrooms,
+                    sqft_min=sqft_min,
+                    sqft_max=sqft_max,
+                    rent_min=rent_min,
+                    rent_max=rent_max
+                ))
+                logger.debug(f"[Section] Extracted: {unit_type} ${rent_min}, {sqft_min} sqft")
+    
+    def _extract_floor_plans_from_table(
+        self, 
+        table: Any, 
+        floor_plans: List[FloorPlanUnit], 
+        found_units: set
+    ) -> None:
+        """Extract floor plan data from HTML tables"""
+        rows = table.find_all('tr')
+        
+        # Try to find header row to identify columns
+        headers = []
+        header_row = table.find('thead')
+        if header_row:
+            headers = [th.get_text(strip=True).lower() for th in header_row.find_all(['th', 'td'])]
+        
+        for row in rows:
+            cells = row.find_all(['td', 'th'])
+            if len(cells) < 2:
+                continue
+            
+            row_text = row.get_text(separator=' ', strip=True)
+            
+            # Extract bedroom count
+            bedrooms = self._parse_bedroom_count(row_text)
+            if bedrooms is None:
+                continue
+            
+            unit_type = "Studio" if bedrooms == 0 else f"{bedrooms}BR"
+            
+            if unit_type in found_units:
+                continue
+            
+            # Extract other data
+            bathrooms = self._parse_bathroom_count(row_text)
+            rent_min, rent_max = self._parse_rent_range(row_text)
+            sqft_min, sqft_max = self._parse_sqft_range(row_text)
+            
+            if rent_min or sqft_min:
+                found_units.add(unit_type)
+                floor_plans.append(FloorPlanUnit(
+                    unit_type=unit_type,
+                    bedrooms=bedrooms,
+                    bathrooms=bathrooms,
+                    sqft_min=sqft_min,
+                    sqft_max=sqft_max,
+                    rent_min=rent_min,
+                    rent_max=rent_max
+                ))
+    
+    def _extract_floor_plans_from_text(
+        self, 
+        content: str, 
+        floor_plans: List[FloorPlanUnit], 
+        found_units: set
+    ) -> None:
+        """Extract floor plan data from unstructured text"""
+        # Normalize whitespace - replace multiple spaces/newlines with single space
+        normalized = ' '.join(content.split())
+        content_lower = normalized.lower()
+        
+        # Try block-based extraction first (for RentCafe/Yardi style pages)
+        self._extract_rentcafe_style(content_lower, floor_plans, found_units)
+        
+        # Pattern: "Studio $1,200" or "Studio from $1,200" or "Studio: $1,200 - $1,400"
+        patterns = [
+            # Studio patterns
+            r'studio[s]?\s*(?:from\s*)?\$?([\d,]+)(?:\s*[-–to]+\s*\$?([\d,]+))?',
+            # 1-4 bedroom patterns with $ and numbers
+            r'(\d)\s*(?:bed(?:room)?s?|br|beds?)\s*(?:from\s*)?\$?([\d,]+)(?:\s*[-–to]+\s*\$?([\d,]+))?',
+            # "One Bedroom $X" style
+            r'(one|two|three|four)\s*bed(?:room)?[s]?\s*(?:from\s*)?\$?([\d,]+)(?:\s*[-–to]+\s*\$?([\d,]+))?',
+        ]
+        
+        word_to_num = {'one': 1, 'two': 2, 'three': 3, 'four': 4}
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, content_lower, re.I)
+            for match in matches:
+                groups = match.groups()
+                
+                if 'studio' in pattern:
+                    bedrooms = 0
+                    rent_min_str = groups[0]
+                    rent_max_str = groups[1] if len(groups) > 1 else None
+                elif groups[0] in word_to_num:
+                    bedrooms = word_to_num[groups[0]]
+                    rent_min_str = groups[1]
+                    rent_max_str = groups[2] if len(groups) > 2 else None
+                else:
+                    bedrooms = int(groups[0])
+                    rent_min_str = groups[1]
+                    rent_max_str = groups[2] if len(groups) > 2 else None
+                
+                unit_type = "Studio" if bedrooms == 0 else f"{bedrooms}BR"
+                
+                if unit_type in found_units:
+                    continue
+                
+                rent_min = self._parse_price_str(rent_min_str)
+                rent_max = self._parse_price_str(rent_max_str)
+                
+                # Only accept reasonable rent values
+                if rent_min and 500 <= rent_min <= 15000:
+                    found_units.add(unit_type)
+                    floor_plans.append(FloorPlanUnit(
+                        unit_type=unit_type,
+                        bedrooms=bedrooms,
+                        bathrooms=1.0 if bedrooms == 0 else float(bedrooms),
+                        rent_min=rent_min,
+                        rent_max=rent_max
+                    ))
+    
+    def _extract_rentcafe_style(
+        self,
+        content: str,
+        floor_plans: List[FloorPlanUnit],
+        found_units: set
+    ) -> None:
+        """
+        Extract floor plans from RentCafe/Yardi style pages.
+        
+        These pages have patterns like:
+        - "Studio 1 Bath 399 Sq. Ft. 4 Available Base Rent $2,233"
+        - "1 Bed 1 Bath 700 Sq. Ft. 2 Available Base Rent $2,720"
+        - "2 Bed 2 Bath 1,089 Sq. Ft. 3 Available Base Rent $3,447"
+        """
+        # Pattern for "Base Rent $X,XXX" or "rent $X,XXX" or "starting at $X,XXX"
+        rent_patterns = [
+            r'base\s*rent\s*\$\s*([\d,]+)',
+            r'rent\s*(?:from|starting\s*at)?\s*\$\s*([\d,]+)',
+            r'starting\s*(?:at|from)\s*\$\s*([\d,]+)',
+            r'\$\s*([\d,]+)\s*/?\s*(?:mo|month)',
+        ]
+        
+        # Find all rent amounts in the content
+        rent_matches = []
+        for pattern in rent_patterns:
+            for match in re.finditer(pattern, content, re.I):
+                rent_val = self._parse_price_str(match.group(1))
+                if rent_val and 500 <= rent_val <= 20000:
+                    rent_matches.append((match.start(), rent_val))
+                    logger.debug(f"[RentCafe] Found rent: ${rent_val} at position {match.start()}")
+        
+        if not rent_matches:
+            logger.debug("[RentCafe] No rent patterns found in content")
+            return
+        
+        logger.info(f"[RentCafe] Found {len(rent_matches)} rent values to process")
+        
+        # For each rent match, look backwards to find bedroom/bath/sqft info
+        for rent_pos, rent_val in rent_matches:
+            # Get the text chunk before this rent (up to 200 chars)
+            chunk_start = max(0, rent_pos - 200)
+            chunk = content[chunk_start:rent_pos]
+            
+            # Parse bedroom count
+            bedrooms = None
+            
+            # Check for studio
+            if re.search(r'\bstudio\b', chunk, re.I):
+                bedrooms = 0
+            else:
+                # Look for "X Bed" or "X bedroom" pattern
+                bed_match = re.search(r'(\d)\s*bed(?:room)?s?\b', chunk, re.I)
+                if bed_match:
+                    bedrooms = int(bed_match.group(1))
+            
+            if bedrooms is None:
+                continue
+            
+            unit_type = "Studio" if bedrooms == 0 else f"{bedrooms}BR"
+            
+            if unit_type in found_units:
+                continue
+            
+            # Parse bathroom count
+            bath_match = re.search(r'([\d.]+)\s*bath(?:room)?s?\b', chunk, re.I)
+            bathrooms = float(bath_match.group(1)) if bath_match else 1.0
+            
+            # Parse square footage
+            sqft_match = re.search(r'([\d,]+)\s*(?:sq\.?\s*ft\.?|square\s*feet|sqft)', chunk, re.I)
+            sqft = self._parse_sqft_str(sqft_match.group(1)) if sqft_match else None
+            
+            # Parse availability
+            avail_match = re.search(r'(\d+)\s*available', chunk, re.I)
+            available = int(avail_match.group(1)) if avail_match else 0
+            
+            # Parse deposit
+            deposit_match = re.search(r'deposit[:\s]*\$?\s*([\d,]+)', chunk, re.I)
+            deposit = self._parse_price_str(deposit_match.group(1)) if deposit_match else None
+            
+            found_units.add(unit_type)
+            floor_plans.append(FloorPlanUnit(
+                unit_type=unit_type,
+                bedrooms=bedrooms,
+                bathrooms=bathrooms,
+                sqft_min=sqft,
+                sqft_max=sqft,
+                rent_min=rent_val,
+                rent_max=rent_val,
+                deposit=deposit,
+                available_count=available
+            ))
+            
+            logger.info(f"[RentCafe] Found: {unit_type} - ${rent_val}, {sqft} sqft, {bathrooms} bath, {available} available")
+    
+    def _parse_bedroom_count(self, text: str) -> Optional[int]:
+        """Parse bedroom count from text"""
+        # Normalize whitespace
+        text = ' '.join(text.split())
+        text_lower = text.lower()
+        
+        # Check for studio
+        if re.search(r'\bstudio\b', text_lower):
+            return 0
+        
+        # Check for numbered bedrooms - various formats
+        # "1 Bed", "1 bed", "1 bedroom", "1BR", "1 BR", "1-bed", "1-bedroom"
+        patterns = [
+            r'(\d)\s*[-]?\s*bed(?:room)?s?\b',
+            r'(\d)\s*[-]?\s*br\b',
+            r'(\d)\s*beds?\b',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                return int(match.group(1))
+        
+        # Check for word bedrooms
+        word_patterns = [
+            r'(one|two|three|four)\s*[-]?\s*bed(?:room)?s?',
+            r'(one|two|three|four)\s*[-]?\s*br\b',
+        ]
+        
+        word_to_num = {'one': 1, 'two': 2, 'three': 3, 'four': 4}
+        
+        for pattern in word_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                return word_to_num.get(match.group(1).lower())
+        
+        return None
+    
+    def _parse_bathroom_count(self, text: str) -> float:
+        """Parse bathroom count from text"""
+        text_lower = text.lower()
+        
+        match = re.search(r'(\d+(?:\.\d+)?)\s*(?:bath(?:room)?|ba)\b', text_lower)
+        if match:
+            return float(match.group(1))
+        
+        return 1.0  # Default to 1 bathroom
+    
+    def _parse_rent_range(self, text: str) -> tuple[Optional[float], Optional[float]]:
+        """Parse rent range from text, returns (min, max)"""
+        # Normalize whitespace
+        text = ' '.join(text.split())
+        
+        # Try multiple patterns in order of specificity
+        patterns = [
+            # "Base Rent $1,200" or "Rent $1,200"
+            r'(?:base\s*)?rent\s*\$\s*([\d,]+)(?:\s*[-–to]+\s*\$?\s*([\d,]+))?',
+            # "Starting at $1,200" or "From $1,200"
+            r'(?:starting\s*(?:at|from)|from)\s*\$\s*([\d,]+)(?:\s*[-–to]+\s*\$?\s*([\d,]+))?',
+            # "$1,200/mo" or "$1,200 per month"
+            r'\$\s*([\d,]+)\s*(?:/|\s*per\s*)\s*(?:mo|month)',
+            # Standard: $1,200 - $1,500 or $1,200-$1,500
+            r'\$\s*([\d,]+)(?:\s*[-–to]+\s*\$?\s*([\d,]+))?',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.I)
+            if match:
+                rent_min = self._parse_price_str(match.group(1))
+                rent_max = self._parse_price_str(match.group(2)) if len(match.groups()) > 1 else None
+                
+                # Validate rent is reasonable (between $200 and $50,000)
+                if rent_min and (rent_min < 200 or rent_min > 50000):
+                    continue  # Try next pattern
+                if rent_max and (rent_max < 200 or rent_max > 50000):
+                    rent_max = None
+                
+                if rent_min:
+                    return rent_min, rent_max
+        
+        return None, None
+    
+    def _parse_sqft_range(self, text: str) -> tuple[Optional[int], Optional[int]]:
+        """Parse square footage range from text"""
+        # Normalize whitespace
+        text = ' '.join(text.split())
+        
+        # Multiple patterns for square footage
+        # "399 Sq. Ft.", "750 sq ft", "750-900 sqft", "1,089 Sq. Ft."
+        patterns = [
+            # "X,XXX Sq. Ft." or "XXX Sq. Ft." (common in RentCafe)
+            r'([\d,]+)\s*sq\.?\s*ft\.?',
+            # Range: "750-900 sq ft"
+            r'([\d,]+)\s*[-–to]+\s*([\d,]+)\s*(?:sq\.?\s*(?:ft\.?|feet)|sqft)',
+            # "sqft" suffix
+            r'([\d,]+)\s*sqft',
+            # "square feet"
+            r'([\d,]+)\s*square\s*feet',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.I)
+            if match:
+                sqft_min = self._parse_sqft_str(match.group(1))
+                sqft_max = self._parse_sqft_str(match.group(2)) if len(match.groups()) > 1 and match.group(2) else None
+                
+                # Validate sqft is reasonable
+                if sqft_min and (sqft_min < 100 or sqft_min > 10000):
+                    continue  # Try next pattern
+                if sqft_max and (sqft_max < 100 or sqft_max > 10000):
+                    sqft_max = None
+                
+                if sqft_min:
+                    return sqft_min, sqft_max
+        
+        return None, None
+    
+    def _parse_price_str(self, price_str: Optional[str]) -> Optional[float]:
+        """Parse price string to float"""
+        if not price_str:
+            return None
+        cleaned = ''.join(c for c in price_str if c.isdigit() or c == '.')
+        try:
+            return float(cleaned) if cleaned else None
+        except ValueError:
+            return None
+    
+    def _parse_sqft_str(self, sqft_str: Optional[str]) -> Optional[int]:
+        """Parse sqft string to int"""
+        if not sqft_str:
+            return None
+        cleaned = ''.join(c for c in sqft_str if c.isdigit())
+        try:
+            return int(cleaned) if cleaned else None
+        except ValueError:
+            return None
+    
     def _chunk_content(self, content: str, max_size: int = 800, overlap: int = 100) -> List[str]:
         """Split content into chunks for RAG embedding"""
         chunks = []
@@ -468,16 +1104,51 @@ class CommunityWebsiteScraper:
             logger.warning(f"Error fetching {url}: {e}")
             return None
 
+    async def _scrape_with_httpx(self, base_url: str) -> List[ExtractedContent]:
+        """
+        Scrape website using httpx (lightweight but often blocked by bot protection)
+        """
+        all_content: List[ExtractedContent] = []
+        
+        # Use cookies and HTTP/2 for better compatibility
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(self.TIMEOUT, connect=10.0),
+            http2=True,
+            cookies=httpx.Cookies(),
+            follow_redirects=True,
+        ) as client:
+            # Discover pages
+            pages = await self._discover_pages(client, base_url)
+            logger.info(f"[httpx] Discovered {len(pages)} pages to scrape")
+            
+            # Scrape pages with delay and referer chain
+            last_url = None
+            for url in pages:
+                # Random delay between requests to appear more human-like
+                delay = self.MIN_DELAY + (hash(url) % 100) / 100 * (self.MAX_DELAY - self.MIN_DELAY)
+                await asyncio.sleep(delay)
+                
+                content = await self._scrape_page(client, url, referer=last_url)
+                if content:
+                    all_content.append(content)
+                    last_url = url
+                    logger.info(f"[httpx] Scraped: {url} ({content.page_type})")
+        
+        return all_content
+
     async def _scrape_with_playwright(self, base_url: str) -> List[ExtractedContent]:
         """
-        Fallback scraper using Playwright for bot-protected websites.
-        Uses a real browser to bypass Cloudflare and other protections.
+        PREFERRED scraper using Playwright for apartment websites.
+        Uses a real browser to bypass Cloudflare and other bot protections.
+        
+        Most apartment community websites use bot protection that blocks httpx,
+        so Playwright is the recommended approach.
         """
         if not PLAYWRIGHT_AVAILABLE:
-            logger.warning("Playwright not available for fallback scraping")
+            logger.warning("Playwright not available - install with: pip install playwright && playwright install chromium")
             return []
         
-        logger.info(f"Using Playwright browser for: {base_url}")
+        logger.info(f"[Playwright] Scraping: {base_url}")
         all_content: List[ExtractedContent] = []
         
         try:
@@ -520,7 +1191,7 @@ class CommunityWebsiteScraper:
                     
                     try:
                         # Navigate with wait for network idle
-                        await page.goto(url, wait_until='networkidle', timeout=15000)
+                        await page.goto(url, wait_until='networkidle', timeout=30000)  # 30s for slow apartment sites
                         await asyncio.sleep(1)  # Extra wait for JS rendering
                         
                         # Get page content
@@ -552,10 +1223,11 @@ class CommunityWebsiteScraper:
                                         'contact': self._extract_contact_info(soup, content),
                                         'specials': self._extract_specials(content),
                                         'unit_types': self._extract_unit_types(content),
+                                        'floor_plans': self._extract_floor_plans(soup, content),
                                     }
                                 )
                                 all_content.append(extracted)
-                                logger.info(f"Playwright scraped: {url} ({page_type})")
+                                logger.info(f"[Playwright] Scraped: {url} ({page_type})")
                         
                         scraped_paths.add(path)
                         await asyncio.sleep(self.MIN_DELAY)
@@ -635,6 +1307,7 @@ class CommunityWebsiteScraper:
                 'contact': self._extract_contact_info(soup, content),
                 'specials': self._extract_specials(content),
                 'unit_types': self._extract_unit_types(content),
+                'floor_plans': self._extract_floor_plans(soup, content),
             }
         )
     
@@ -662,37 +1335,29 @@ class CommunityWebsiteScraper:
         knowledge = CommunityKnowledge(website_url=base_url)
         all_content: List[ExtractedContent] = []
         
-        # Use cookies and HTTP/2 for better compatibility
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(self.TIMEOUT, connect=10.0),
-            http2=True,
-            cookies=httpx.Cookies(),
-            follow_redirects=True,
-        ) as client:
-            # Discover pages
-            pages = await self._discover_pages(client, base_url)
-            logger.info(f"Discovered {len(pages)} pages to scrape")
-            
-            # Scrape pages with delay and referer chain
-            last_url = None
-            for url in pages:
-                # Random delay between requests to appear more human-like
-                delay = self.MIN_DELAY + (hash(url) % 100) / 100 * (self.MAX_DELAY - self.MIN_DELAY)
-                await asyncio.sleep(delay)
-                
-                content = await self._scrape_page(client, url, referer=last_url)
-                if content:
-                    all_content.append(content)
-                    last_url = url
-                    logger.info(f"Scraped: {url} ({content.page_type})")
-        
-        knowledge.pages_scraped = len(all_content)
-        
-        # If httpx failed (likely bot protection), try Playwright fallback
-        if not all_content and self.use_playwright_fallback:
-            logger.info(f"httpx failed for {base_url}, trying Playwright fallback...")
+        # PRIORITIZE PLAYWRIGHT for apartment websites (they often have bot protection)
+        if self.prefer_playwright:
+            logger.info(f"Using Playwright (preferred) for: {base_url}")
             all_content = await self._scrape_with_playwright(base_url)
             knowledge.pages_scraped = len(all_content)
+            
+            # Fall back to httpx only if Playwright failed or didn't get enough content
+            if len(all_content) < 2:
+                logger.info(f"Playwright got {len(all_content)} pages, trying httpx as fallback...")
+                httpx_content = await self._scrape_with_httpx(base_url)
+                if len(httpx_content) > len(all_content):
+                    all_content = httpx_content
+                    knowledge.pages_scraped = len(all_content)
+        else:
+            # Legacy behavior: httpx first, Playwright as fallback
+            all_content = await self._scrape_with_httpx(base_url)
+            knowledge.pages_scraped = len(all_content)
+            
+            # If httpx failed (likely bot protection), try Playwright fallback
+            if not all_content and self.use_playwright_fallback:
+                logger.info(f"httpx failed for {base_url}, trying Playwright fallback...")
+                all_content = await self._scrape_with_playwright(base_url)
+                knowledge.pages_scraped = len(all_content)
         
         if not all_content:
             logger.warning(f"No content extracted from {base_url}")
@@ -702,6 +1367,8 @@ class CommunityWebsiteScraper:
         all_amenities: Set[str] = set()
         all_specials: List[str] = []
         all_unit_types: Set[str] = set()
+        all_floor_plans: List[FloorPlanUnit] = []
+        floor_plan_types_found: Set[str] = set()
         
         for content in all_content:
             # Extract property name from home page title
@@ -741,6 +1408,13 @@ class CommunityWebsiteScraper:
             if content.metadata.get('unit_types'):
                 all_unit_types.update(content.metadata['unit_types'])
             
+            # Aggregate floor plans (prefer floor_plans page content)
+            if content.metadata.get('floor_plans'):
+                for fp in content.metadata['floor_plans']:
+                    if fp.unit_type not in floor_plan_types_found:
+                        floor_plan_types_found.add(fp.unit_type)
+                        all_floor_plans.append(fp)
+            
             # Create chunks for RAG
             chunks = self._chunk_content(content.content)
             for chunk in chunks:
@@ -751,6 +1425,28 @@ class CommunityWebsiteScraper:
         knowledge.amenities = list(all_amenities)
         knowledge.specials = list(set(all_specials))
         knowledge.unit_types = sorted(list(all_unit_types))
+        
+        # HYBRID LLM EXTRACTION: If regex found nothing, try LLM on aggregated content
+        if not all_floor_plans and self.use_llm_extraction and self.openai_client:
+            logger.info("[FloorPlans] Regex extraction found nothing, trying LLM on aggregated content...")
+            
+            # Combine all scraped content for LLM analysis
+            # all_content contains ExtractedContent dataclass objects
+            combined_content = "\n\n---PAGE BREAK---\n\n".join([
+                c.content for c in all_content if c.content
+            ])
+            
+            if combined_content:
+                all_floor_plans = self._extract_floor_plans_with_llm(combined_content)
+        
+        knowledge.floor_plans = all_floor_plans
+        
+        if all_floor_plans:
+            logger.info(f"✅ Extracted {len(all_floor_plans)} floor plans with pricing:")
+            for fp in all_floor_plans:
+                logger.info(f"   - {fp.unit_type}: ${fp.rent_min} - ${fp.rent_max}, {fp.sqft_min} sqft")
+        else:
+            logger.warning(f"⚠️ No floor plans with pricing found. Pages scraped: {len(all_content)}")
         
         # Extract office hours from contact info if present
         if knowledge.contact_info and knowledge.contact_info.get('office_hours'):
@@ -837,18 +1533,31 @@ class CommunityWebsiteScraper:
 
 
 # Synchronous wrapper for non-async contexts
-def scrape_community_website(website_url: str, openai_api_key: Optional[str] = None) -> Dict[str, Any]:
+def scrape_community_website(
+    website_url: str, 
+    openai_api_key: Optional[str] = None,
+    prefer_playwright: bool = True,
+    use_llm_extraction: bool = True
+) -> Dict[str, Any]:
     """
     Synchronous wrapper to scrape a community website.
     
     Args:
         website_url: The community website URL
         openai_api_key: Optional OpenAI API key for AI-enhanced extraction
+        prefer_playwright: If True (default), use Playwright first for better
+                          compatibility with bot-protected apartment websites
+        use_llm_extraction: If True (default), use GPT-4o-mini for intelligent
+                           floor plan/pricing extraction
         
     Returns:
         Dictionary with extracted community knowledge
     """
-    scraper = CommunityWebsiteScraper(openai_api_key=openai_api_key)
+    scraper = CommunityWebsiteScraper(
+        openai_api_key=openai_api_key,
+        prefer_playwright=prefer_playwright,
+        use_llm_extraction=use_llm_extraction
+    )
     
     if openai_api_key:
         knowledge = asyncio.run(scraper.extract_with_ai(website_url))

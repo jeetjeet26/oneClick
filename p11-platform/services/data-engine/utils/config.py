@@ -29,4 +29,16 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 TARGET_PROPERTY_ID = os.environ.get("TARGET_PROPERTY_ID")
 
+# Apify configuration for apartments.com scraping
+APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN")
+
+# Apify proxy configuration
+# Proxy types: "residential" (recommended for apartments.com), "datacenter" (cheaper but may be blocked)
+APIFY_PROXY_TYPE = os.environ.get("APIFY_PROXY_TYPE", "residential")
+# Country code for geo-targeting (US recommended for apartments.com)
+APIFY_PROXY_COUNTRY = os.environ.get("APIFY_PROXY_COUNTRY", "US")
+
+# Google Maps for competitor discovery
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
+
 

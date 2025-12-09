@@ -17,8 +17,14 @@ playwright
 fake-useragent
 tenacity
 
+# Apify (apartments.com scraping via managed service)
+# Note: We use httpx to call Apify API directly (no SDK needed)
+
 # AI / LLM
 openai
+
+# Async utilities
+nest-asyncio
 
 # Geocoding
 geopy
