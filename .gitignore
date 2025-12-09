@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Credentials - NEVER commit these
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!vercel.json
+!eslint.config.mjs
+google-credentials.json
+*-credentials.json
+oneclick-*.json
+
+# Build outputs
+/.next/
+/out/
+/build/
+/coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+*.pem
+*.log
+Thumbs.db
+

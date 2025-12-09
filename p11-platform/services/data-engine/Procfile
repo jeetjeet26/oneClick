@@ -1,0 +1,6 @@
+# Main FastAPI web process (using gunicorn with uvicorn worker for production)
+web: gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+
+# Worker process for scheduled pipeline runs (requires Heroku Scheduler add-on)
+# worker: python run_pipelines.py
+

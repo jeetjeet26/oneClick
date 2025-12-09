@@ -1,0 +1,21 @@
+fastapi
+uvicorn[standard]
+dlt
+supabase
+pandas
+python-dotenv
+google-ads
+google-analytics-data
+requests
+gunicorn
+
+# Web Scraping
+beautifulsoup4
+lxml
+httpx
+playwright
+fake-useragent
+tenacity
+
+# Geocoding
+geopy

@@ -1,0 +1,153 @@
+# P11 Data Engine - Daily Pipeline Runner
+# ========================================
+# Runs all ETL pipelines daily at midnight UTC to fetch marketing data
+# from Meta Ads, Google Ads, and GA4 into Supabase.
+#
+# Manual trigger: Actions tab > "Daily Data Pipelines" > "Run workflow"
+
+name: Daily Data Pipelines
+
+on:
+  # Run daily at midnight UTC
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      pipeline:
+        description: 'Which pipeline to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - meta
+          - google
+          - ga4
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  run-pipelines:
+    name: Run Data Pipelines
+    runs-on: ubuntu-latest
+    
+    # Only run if secrets are configured
+    if: ${{ vars.PIPELINES_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
+    
+    defaults:
+      run:
+        working-directory: p11-platform/services/data-engine
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: p11-platform/services/data-engine/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check pipeline configuration
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+          GA4_CREDENTIALS_JSON: ${{ secrets.GA4_CREDENTIALS_JSON }}
+          TARGET_PROPERTY_ID: ${{ secrets.TARGET_PROPERTY_ID }}
+        run: |
+          python run_pipelines.py --dry-run
+
+      - name: Run pipelines
+        id: run_pipelines
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+          GA4_CREDENTIALS_JSON: ${{ secrets.GA4_CREDENTIALS_JSON }}
+          TARGET_PROPERTY_ID: ${{ secrets.TARGET_PROPERTY_ID }}
+        run: |
+          # Determine which pipeline to run
+          PIPELINE_ARG=""
+          if [ "${{ github.event.inputs.pipeline }}" = "meta" ]; then
+            PIPELINE_ARG="--meta"
+          elif [ "${{ github.event.inputs.pipeline }}" = "google" ]; then
+            PIPELINE_ARG="--google"
+          elif [ "${{ github.event.inputs.pipeline }}" = "ga4" ]; then
+            PIPELINE_ARG="--ga4"
+          fi
+          
+          # Run pipelines
+          python run_pipelines.py $PIPELINE_ARG --json > results.json
+          
+          # Display results
+          cat results.json
+          
+          # Save results for summary
+          echo "PIPELINE_RESULTS<<EOF" >> $GITHUB_OUTPUT
+          cat results.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload pipeline results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-results-${{ github.run_number }}
+          path: p11-platform/services/data-engine/results.json
+          retention-days: 30
+
+      - name: Create job summary
+        if: always()
+        run: |
+          echo "## 📊 Pipeline Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f results.json ]; then
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat results.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No results file found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  notify-on-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: run-pipelines
+    if: failure()
+    
+    steps:
+      - name: Send failure notification
+        run: |
+          echo "Pipeline run failed! Consider setting up Slack/email notifications here."
+          # Uncomment and configure for Slack notifications:
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"⚠️ P11 Data Pipelines failed! Check GitHub Actions for details."}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+

@@ -1,0 +1,147 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+import OpenAI from 'openai'
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
+
+interface SentimentAnalysis {
+  sentiment: 'positive' | 'neutral' | 'negative'
+  sentimentScore: number // -1 to 1
+  topics: string[]
+  isUrgent: boolean
+  summary: string
+}
+
+async function analyzeReview(reviewText: string, rating: number | null): Promise<SentimentAnalysis> {
+  const systemPrompt = `You are a sentiment analysis expert for property reviews. Analyze the review and provide:
+1. Sentiment: positive, neutral, or negative
+2. Sentiment score: -1 (very negative) to 1 (very positive)
+3. Topics: Array of key topics mentioned (e.g., "maintenance", "noise", "management", "amenities", "cleanliness", "parking", "staff")
+4. Is Urgent: true if the review mentions safety concerns, legal issues, discrimination, or severe problems requiring immediate attention
+5. Summary: A brief 1-sentence summary of the review
+
+Respond ONLY with valid JSON in this format:
+{
+  "sentiment": "positive|neutral|negative",
+  "sentimentScore": 0.0,
+  "topics": ["topic1", "topic2"],
+  "isUrgent": false,
+  "summary": "Brief summary"
+}`
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Review (Rating: ${rating || 'N/A'}/5):\n${reviewText}` }
+      ],
+      temperature: 0.3,
+      max_tokens: 500
+    })
+
+    const responseText = completion.choices[0].message.content || '{}'
+    const analysis = JSON.parse(responseText)
+    
+    return {
+      sentiment: analysis.sentiment || 'neutral',
+      sentimentScore: analysis.sentimentScore || 0,
+      topics: analysis.topics || [],
+      isUrgent: analysis.isUrgent || false,
+      summary: analysis.summary || ''
+    }
+  } catch (error) {
+    console.error('Error analyzing review:', error)
+    
+    // Fallback based on rating
+    if (rating) {
+      if (rating >= 4) return { sentiment: 'positive', sentimentScore: 0.7, topics: [], isUrgent: false, summary: 'Positive review' }
+      if (rating <= 2) return { sentiment: 'negative', sentimentScore: -0.7, topics: [], isUrgent: false, summary: 'Negative review' }
+    }
+    return { sentiment: 'neutral', sentimentScore: 0, topics: [], isUrgent: false, summary: 'Review requires manual analysis' }
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+  const body = await request.json()
+  
+  const { reviewId, reviewText, rating } = body
+
+  if (!reviewId && !reviewText) {
+    return NextResponse.json(
+      { error: 'Either reviewId or reviewText is required' },
+      { status: 400 }
+    )
+  }
+
+  let textToAnalyze = reviewText
+  let reviewRating = rating
+
+  // If reviewId is provided, fetch the review
+  if (reviewId && !reviewText) {
+    const { data: review, error } = await supabase
+      .from('reviews')
+      .select('review_text, rating')
+      .eq('id', reviewId)
+      .single()
+
+    if (error || !review) {
+      return NextResponse.json({ error: 'Review not found' }, { status: 404 })
+    }
+
+    textToAnalyze = review.review_text
+    reviewRating = review.rating
+  }
+
+  // Analyze the review
+  const analysis = await analyzeReview(textToAnalyze, reviewRating)
+
+  // If reviewId provided, update the review with analysis results
+  if (reviewId) {
+    const { error: updateError } = await supabase
+      .from('reviews')
+      .update({
+        sentiment: analysis.sentiment,
+        sentiment_score: analysis.sentimentScore,
+        topics: analysis.topics,
+        is_urgent: analysis.isUrgent,
+        auto_respond_eligible: analysis.sentiment === 'positive' && (reviewRating || 0) >= 4,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', reviewId)
+
+    if (updateError) {
+      console.error('Error updating review with analysis:', updateError)
+    }
+
+    // If negative/urgent, create a ticket
+    if (analysis.sentiment === 'negative' || analysis.isUrgent) {
+      const { data: review } = await supabase
+        .from('reviews')
+        .select('property_id, reviewer_name')
+        .eq('id', reviewId)
+        .single()
+
+      if (review) {
+        await supabase.from('review_tickets').upsert({
+          review_id: reviewId,
+          property_id: review.property_id,
+          title: analysis.isUrgent 
+            ? `🚨 URGENT: Review from ${review.reviewer_name || 'Anonymous'}`
+            : `Negative review from ${review.reviewer_name || 'Anonymous'}`,
+          description: analysis.summary,
+          priority: analysis.isUrgent ? 'urgent' : (analysis.sentimentScore < -0.5 ? 'high' : 'medium'),
+          status: 'open'
+        }, {
+          onConflict: 'review_id'
+        })
+      }
+    }
+  }
+
+  return NextResponse.json({ analysis })
+}
+

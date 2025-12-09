@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/workflows/process",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/scrape-competitors",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-reviews",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
+

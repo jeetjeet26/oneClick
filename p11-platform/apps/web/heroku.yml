@@ -1,0 +1,10 @@
+# Heroku Container Registry deployment
+# Use this if you prefer Docker-based deployment
+
+build:
+  docker:
+    web: Dockerfile
+
+run:
+  web: npm run start
+
