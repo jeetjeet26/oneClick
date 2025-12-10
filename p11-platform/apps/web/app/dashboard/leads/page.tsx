@@ -380,7 +380,7 @@ function CreateLeadModal({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+        <div className="modal-light-mode bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
           <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Plus className="text-indigo-600" size={20} />
@@ -405,7 +405,7 @@ function CreateLeadModal({
                   required
                   value={formData.firstName}
                   onChange={e => setFormData(d => ({ ...d, firstName: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   placeholder="John"
                 />
               </div>
@@ -418,7 +418,7 @@ function CreateLeadModal({
                   required
                   value={formData.lastName}
                   onChange={e => setFormData(d => ({ ...d, lastName: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   placeholder="Doe"
                 />
               </div>
@@ -434,7 +434,7 @@ function CreateLeadModal({
                   type="email"
                   value={formData.email}
                   onChange={e => setFormData(d => ({ ...d, email: e.target.value }))}
-                  className="w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   placeholder="john@example.com"
                 />
               </div>
@@ -450,7 +450,7 @@ function CreateLeadModal({
                   type="tel"
                   value={formData.phone}
                   onChange={e => setFormData(d => ({ ...d, phone: e.target.value }))}
-                  className="w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   placeholder="+1 (555) 123-4567"
                 />
               </div>
@@ -464,7 +464,7 @@ function CreateLeadModal({
                 <select
                   value={formData.source}
                   onChange={e => setFormData(d => ({ ...d, source: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 >
                   <option value="manual">Manual Entry</option>
                   <option value="walk-in">Walk-in</option>
@@ -484,7 +484,7 @@ function CreateLeadModal({
                 <select
                   value={formData.bedrooms}
                   onChange={e => setFormData(d => ({ ...d, bedrooms: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 >
                   <option value="">Not specified</option>
                   <option value="studio">Studio</option>
@@ -506,7 +506,7 @@ function CreateLeadModal({
                   type="date"
                   value={formData.moveInDate}
                   onChange={e => setFormData(d => ({ ...d, moveInDate: e.target.value }))}
-                  className="w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
             </div>
@@ -519,7 +519,7 @@ function CreateLeadModal({
                 value={formData.notes}
                 onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))}
                 rows={3}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
                 placeholder="Any additional notes about the lead..."
               />
             </div>
@@ -809,7 +809,7 @@ function SendMessageModal({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+        <div className="modal-light-mode bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
           <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Send className="text-indigo-600" size={20} />
@@ -882,7 +882,7 @@ function SendMessageModal({
                   value={subject}
                   onChange={e => setSubject(e.target.value)}
                   placeholder="Re: Your inquiry about..."
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
             )}
@@ -900,7 +900,7 @@ function SendMessageModal({
                   ? "Hi! Just following up on your inquiry..."
                   : "Hi,\n\nThank you for your interest in..."
                 }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
               />
               {channel === 'sms' && (
                 <p className="text-xs text-slate-400 mt-1">

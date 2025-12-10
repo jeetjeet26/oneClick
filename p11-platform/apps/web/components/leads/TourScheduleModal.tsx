@@ -176,7 +176,7 @@ export function TourScheduleModal({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+        <div className="modal-light-mode bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
           {/* Header */}
           <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
             <div>
@@ -273,7 +273,7 @@ export function TourScheduleModal({
                       onChange={e => setTourDate(e.target.value)}
                       min={minDate}
                       max={maxDate}
-                      className="w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                      className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                     />
                   </div>
                 </div>
@@ -287,7 +287,7 @@ export function TourScheduleModal({
                       required
                       value={tourTime}
                       onChange={e => setTourTime(e.target.value)}
-                      className="w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white appearance-none"
+                      className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 appearance-none"
                     >
                       {TIME_SLOTS.map(slot => (
                         <option key={slot.value} value={slot.value}>
@@ -331,7 +331,7 @@ export function TourScheduleModal({
                   onChange={e => setNotes(e.target.value)}
                   rows={2}
                   placeholder="Special requests, accessibility needs, etc."
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
                 />
               </div>
 

@@ -582,7 +582,7 @@ class GooglePlacesScraper:
                 'total_reviews': best_match.get('user_ratings_total', 0),
                 'reviews': [r.to_dict() for r in reviews],
                 'reviews_fetched': len(reviews),
-                'note': 'Google Places API returns up to 5 reviews per request'
+                'note': 'Google Places API returns up to 5 reviews. Use scrape_all_reviews() for more.'
             }
             
         except Exception as e:
@@ -593,3 +593,283 @@ class GooglePlacesScraper:
                 'reviews': []
             }
 
+
+# =============================================================================
+# PLAYWRIGHT-BASED GOOGLE MAPS REVIEW SCRAPER
+# Gets ALL reviews by scrolling through the Google Maps reviews panel
+# =============================================================================
+
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    logger.warning("Playwright not available for Google Maps scraping")
+
+import re
+import hashlib
+import concurrent.futures
+
+
+class GoogleMapsReviewScraper:
+    """
+    Scrapes ALL reviews from Google Maps using Playwright browser automation.
+    
+    The Google Places API only returns 5 reviews max. This scraper can get
+    all reviews by loading the Google Maps page and scrolling through the
+    reviews panel.
+    """
+    
+    def __init__(self, headless: bool = True):
+        self.headless = headless
+        if not PLAYWRIGHT_AVAILABLE:
+            raise ImportError("Playwright required. Install: pip install playwright && playwright install chromium")
+    
+    def _scrape_reviews_sync(
+        self, 
+        place_id: str, 
+        max_reviews: int = 100,
+        scroll_pause: float = 1.5
+    ) -> Dict[str, Any]:
+        """
+        Scrape reviews from Google Maps for a given Place ID (synchronous)
+        
+        Args:
+            place_id: Google Place ID (e.g., ChIJN1t_tDeuEmsRUsoyG83frY4)
+            max_reviews: Maximum number of reviews to fetch
+            scroll_pause: Seconds to wait between scrolls
+            
+        Returns:
+            Dict with reviews and metadata
+        """
+        # Use the correct Google Maps URL format for place ID
+        url = f"https://www.google.com/maps/search/?api=1&query=Google&query_place_id={place_id}"
+        
+        reviews = []
+        place_name = None
+        
+        logger.info(f"[Playwright] Scraping Google Maps reviews for place: {place_id}")
+        
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=self.headless)
+                context = browser.new_context(
+                    viewport={'width': 1280, 'height': 900},
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+                page = context.new_page()
+                
+                # Navigate to Google Maps place - use domcontentloaded (networkidle never fires on Maps)
+                logger.info(f"[Playwright] Navigating to: {url}")
+                page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                
+                # Wait for the page to actually load content
+                logger.info("[Playwright] Waiting for page content...")
+                page.wait_for_timeout(5000)
+                
+                # Try to wait for reviews section to appear
+                try:
+                    page.wait_for_selector('div[role="feed"], .jftiEf, [data-review-id]', timeout=15000)
+                    logger.info("[Playwright] Reviews section found!")
+                except:
+                    logger.warning("[Playwright] Reviews section not found immediately, continuing...")
+                
+                # Get place name
+                try:
+                    place_name_el = page.query_selector('h1')
+                    if place_name_el:
+                        place_name = place_name_el.inner_text()
+                except:
+                    pass
+                
+                # Click on reviews tab/button to open reviews panel
+                try:
+                    logger.info("[Playwright] Looking for reviews button...")
+                    
+                    # Try multiple selectors for the reviews tab
+                    selectors_to_try = [
+                        'button[aria-label*="Reviews"]',
+                        'button[aria-label*="reviews"]', 
+                        'button[data-tab-index="1"]',
+                        '[role="tab"]:has-text("Reviews")',
+                        'button:has-text("reviews")',
+                        '.Gpq6kf.fontTitleSmall:has-text("Reviews")',  # Reviews tab text
+                    ]
+                    
+                    reviews_button = None
+                    for selector in selectors_to_try:
+                        try:
+                            reviews_button = page.query_selector(selector)
+                            if reviews_button:
+                                logger.info(f"[Playwright] Found reviews button with: {selector}")
+                                break
+                        except:
+                            continue
+                    
+                    if reviews_button:
+                        reviews_button.click()
+                        logger.info("[Playwright] Clicked reviews button, waiting for reviews to load...")
+                        page.wait_for_timeout(3000)
+                    else:
+                        logger.warning("[Playwright] Could not find reviews button, trying to find reviews directly")
+                except Exception as e:
+                    logger.warning(f"Could not click reviews button: {e}")
+                
+                # Find the scrollable reviews container
+                logger.info("[Playwright] Looking for scrollable reviews container...")
+                scroll_container = page.query_selector('div[role="feed"]')
+                if not scroll_container:
+                    scroll_container = page.query_selector('.m6QErb.DxyBCb.kA9KIf.dS8AEf')
+                if not scroll_container:
+                    scroll_container = page.query_selector('.m6QErb')
+                
+                if scroll_container:
+                    logger.info("[Playwright] Found scroll container")
+                else:
+                    logger.warning("[Playwright] No scroll container found, will use page scroll")
+                
+                # Scroll and collect reviews
+                last_count = 0
+                no_new_reviews_count = 0
+                
+                while len(reviews) < max_reviews and no_new_reviews_count < 5:
+                    # Get all review elements - try multiple selectors
+                    review_elements = page.query_selector_all('[data-review-id], div.jftiEf, div.jJc9Ad')
+                    logger.info(f"[Playwright] Found {len(review_elements)} review elements on page")
+                    
+                    for review_el in review_elements:
+                        try:
+                            review_data = self._extract_review_data_sync(review_el, place_id)
+                            if review_data and review_data['platform_review_id'] not in [r['platform_review_id'] for r in reviews]:
+                                reviews.append(review_data)
+                                
+                                if len(reviews) >= max_reviews:
+                                    break
+                        except Exception as e:
+                            logger.debug(f"Error extracting review: {e}")
+                            continue
+                    
+                    # Check if we got new reviews
+                    if len(reviews) == last_count:
+                        no_new_reviews_count += 1
+                    else:
+                        no_new_reviews_count = 0
+                    last_count = len(reviews)
+                    
+                    # Scroll down
+                    if scroll_container:
+                        scroll_container.evaluate('el => el.scrollTop = el.scrollHeight')
+                    else:
+                        page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                    
+                    page.wait_for_timeout(int(scroll_pause * 1000))
+                    
+                    logger.info(f"[Playwright] Collected {len(reviews)} reviews so far...")
+                
+                browser.close()
+                
+        except PlaywrightTimeout as e:
+            logger.error(f"[Playwright] Timeout scraping Google Maps: {e}")
+        except Exception as e:
+            logger.error(f"[Playwright] Error scraping Google Maps: {e}")
+        
+        return {
+            'success': len(reviews) > 0,
+            'place_id': place_id,
+            'place_name': place_name,
+            'reviews': reviews,
+            'reviews_fetched': len(reviews),
+            'method': 'playwright_scraper',
+            'note': f'Scraped {len(reviews)} reviews via Google Maps web interface'
+        }
+    
+    def _extract_review_data_sync(self, review_el, place_id: str) -> Optional[Dict[str, Any]]:
+        """Extract review data from a review element (synchronous)"""
+        try:
+            # Try to get review ID from data attribute
+            review_id = review_el.get_attribute('data-review-id')
+            
+            # Get reviewer name
+            name_el = review_el.query_selector('.d4r55, span.d4r55')
+            reviewer_name = name_el.inner_text() if name_el else 'Anonymous'
+            
+            # Get avatar
+            avatar_el = review_el.query_selector('img.NBa7we')
+            avatar_url = avatar_el.get_attribute('src') if avatar_el else None
+            
+            # Get rating (count filled stars)
+            rating = 0
+            stars_container = review_el.query_selector('.kvMYJc')
+            if stars_container:
+                aria_label = stars_container.get_attribute('aria-label')
+                if aria_label:
+                    match = re.search(r'(\d+)', aria_label)
+                    if match:
+                        rating = int(match.group(1))
+            
+            # Get review text
+            text_el = review_el.query_selector('.wiI7pd, span.wiI7pd')
+            review_text = text_el.inner_text() if text_el else ''
+            
+            # Expand "More" if present
+            try:
+                more_btn = review_el.query_selector('button.w8nwRe')
+                if more_btn:
+                    more_btn.click()
+                    review_el.page.wait_for_timeout(300)
+                    text_el = review_el.query_selector('.wiI7pd, span.wiI7pd')
+                    review_text = text_el.inner_text() if text_el else review_text
+            except:
+                pass
+            
+            # Get relative time
+            time_el = review_el.query_selector('.rsqaWe')
+            relative_time = time_el.inner_text() if time_el else None
+            
+            # Generate unique ID if not found
+            if not review_id:
+                unique_str = f"{place_id}-{reviewer_name}-{review_text[:50]}"
+                review_id = f"google-{hashlib.md5(unique_str.encode()).hexdigest()[:12]}"
+            
+            return {
+                'platform_review_id': review_id,
+                'reviewer_name': reviewer_name,
+                'reviewer_avatar_url': avatar_url,
+                'rating': rating,
+                'review_text': review_text,
+                'review_date': datetime.utcnow().isoformat(),
+                'relative_time': relative_time,
+                'platform': 'google'
+            }
+        except Exception as e:
+            logger.debug(f"Error extracting review data: {e}")
+            return None
+    
+    async def scrape_reviews_async(self, place_id: str, max_reviews: int = 100) -> Dict[str, Any]:
+        """
+        Async wrapper that runs Playwright in a thread pool to avoid Windows asyncio issues
+        """
+        loop = None
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+        except:
+            pass
+        
+        # Run sync Playwright in a thread pool to avoid Windows asyncio subprocess issues
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            if loop:
+                result = await loop.run_in_executor(
+                    executor,
+                    self._scrape_reviews_sync,
+                    place_id,
+                    max_reviews
+                )
+            else:
+                result = executor.submit(self._scrape_reviews_sync, place_id, max_reviews).result()
+        
+        return result
+    
+    def scrape_reviews(self, place_id: str, max_reviews: int = 100) -> Dict[str, Any]:
+        """Synchronous entry point"""
+        return self._scrape_reviews_sync(place_id, max_reviews)

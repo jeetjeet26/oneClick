@@ -1,13 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import OpenAI from 'openai'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
+
 // Data Engine URL for scraping operations
 const DATA_ENGINE_URL = process.env.DATA_ENGINE_URL || 'http://localhost:8000'
+
+// ============================================================================
+// SENTIMENT ANALYSIS WITH OPENAI
+// ============================================================================
+interface SentimentAnalysis {
+  sentiment: 'positive' | 'neutral' | 'negative'
+  sentimentScore: number
+  topics: string[]
+  isUrgent: boolean
+  summary: string
+}
+
+async function analyzeReviewSentiment(reviewText: string, rating: number | null): Promise<SentimentAnalysis> {
+  const systemPrompt = `You are a sentiment analysis expert for property reviews. Analyze the review and provide:
+1. Sentiment: positive, neutral, or negative
+2. Sentiment score: -1 (very negative) to 1 (very positive)
+3. Topics: Array of key topics mentioned (e.g., "maintenance", "noise", "management", "amenities", "cleanliness", "parking", "staff")
+4. Is Urgent: true if the review mentions safety concerns, legal issues, discrimination, or severe problems requiring immediate attention
+5. Summary: A brief 1-sentence summary of the review
+
+Respond ONLY with valid JSON in this format:
+{
+  "sentiment": "positive|neutral|negative",
+  "sentimentScore": 0.0,
+  "topics": ["topic1", "topic2"],
+  "isUrgent": false,
+  "summary": "Brief summary"
+}`
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Review (Rating: ${rating || 'N/A'}/5):\n${reviewText}` }
+      ],
+      temperature: 0.3,
+      max_tokens: 500
+    })
+
+    const responseText = completion.choices[0].message.content || '{}'
+    const analysis = JSON.parse(responseText)
+    
+    return {
+      sentiment: analysis.sentiment || 'neutral',
+      sentimentScore: analysis.sentimentScore || 0,
+      topics: analysis.topics || [],
+      isUrgent: analysis.isUrgent || false,
+      summary: analysis.summary || ''
+    }
+  } catch (error) {
+    console.error('Error analyzing review with OpenAI:', error)
+    
+    // Fallback based on rating
+    if (rating) {
+      if (rating >= 4) return { sentiment: 'positive', sentimentScore: 0.7, topics: [], isUrgent: false, summary: 'Positive review' }
+      if (rating <= 2) return { sentiment: 'negative', sentimentScore: -0.7, topics: [], isUrgent: false, summary: 'Negative review' }
+    }
+    return { sentiment: 'neutral', sentimentScore: 0, topics: [], isUrgent: false, summary: 'Review requires manual analysis' }
+  }
+}
 
 // Review type definition
 interface ReviewData {
@@ -20,60 +86,51 @@ interface ReviewData {
 }
 
 // ============================================================================
-// GOOGLE PLACES API - Direct API Method
+// GOOGLE PLACES API - Via Data Engine (uses legacy API that works)
 // ============================================================================
-async function fetchGoogleReviewsViaAPI(placeId: string, apiKey?: string): Promise<ReviewData[]> {
-  const GOOGLE_API_KEY = apiKey || process.env.GOOGLE_PLACES_API_KEY
-  
-  if (!GOOGLE_API_KEY) {
-    throw new Error('Google Places API key not configured')
-  }
-
-  // Use Places API (New) - Place Details with reviews field
-  const url = `https://places.googleapis.com/v1/places/${placeId}?fields=reviews&key=${GOOGLE_API_KEY}`
-  
-  const response = await fetch(url, {
-    headers: {
-      'X-Goog-Api-Key': GOOGLE_API_KEY,
-      'X-Goog-FieldMask': 'reviews'
-    }
+async function fetchGoogleReviewsViaAPI(placeId: string): Promise<ReviewData[]> {
+  // Use data-engine which has the Google Maps API configured and working
+  const response = await fetch(`${DATA_ENGINE_URL}/scraper/google-reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ place_id: placeId, max_reviews: 50 })
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    console.error('Google API error:', error)
-    throw new Error(`Google API error: ${response.status}`)
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.error || `Data engine error: ${response.status}`)
   }
 
   const data = await response.json()
   
-  if (!data.reviews || !Array.isArray(data.reviews)) {
-    return []
+  if (!data.success) {
+    throw new Error(data.error || 'Failed to fetch Google reviews')
   }
 
-  return data.reviews.map((review: {
-    name?: string
-    authorAttribution?: { displayName?: string; photoUri?: string }
+  return (data.reviews || []).map((review: {
+    reviewer_name?: string
+    reviewer_avatar_url?: string
     rating?: number
-    text?: { text?: string }
-    relativePublishTimeDescription?: string
-    publishTime?: string
+    review_text?: string
+    review_date?: string
+    platform_review_id?: string
   }) => ({
-    reviewer_name: review.authorAttribution?.displayName || 'Anonymous',
-    reviewer_avatar_url: review.authorAttribution?.photoUri || null,
+    reviewer_name: review.reviewer_name || 'Anonymous',
+    reviewer_avatar_url: review.reviewer_avatar_url || null,
     rating: review.rating || 0,
-    review_text: review.text?.text || '',
-    review_date: review.publishTime || new Date().toISOString(),
-    platform_review_id: review.name || `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    review_text: review.review_text || '',
+    review_date: review.review_date || new Date().toISOString(),
+    platform_review_id: review.platform_review_id || `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   }))
 }
 
 // ============================================================================
-// GOOGLE REVIEWS VIA DATA-ENGINE SCRAPER
+// GOOGLE REVIEWS VIA DATA-ENGINE SCRAPER (FULL - All Reviews)
 // ============================================================================
 async function fetchGoogleReviewsViaScraper(placeId: string): Promise<ReviewData[]> {
   try {
-    const response = await fetch(`${DATA_ENGINE_URL}/scraper/google-reviews`, {
+    // Use the FULL scraper endpoint which uses Playwright to get ALL reviews
+    const response = await fetch(`${DATA_ENGINE_URL}/scraper/google-reviews/full`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ place_id: placeId, max_reviews: 100 })
@@ -86,8 +143,14 @@ async function fetchGoogleReviewsViaScraper(placeId: string): Promise<ReviewData
 
     const data = await response.json()
     
-    if (!data.success || !data.reviews) {
+    // Consider it successful if we have any reviews (even from fallback)
+    if (!data.reviews || data.reviews.length === 0) {
       throw new Error(data.error || 'No reviews returned from scraper')
+    }
+    
+    // Log if we used fallback
+    if (data.method === 'api_fallback') {
+      console.log('Scraper used API fallback:', data.note)
     }
 
     return data.reviews.map((review: {
@@ -360,11 +423,11 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', connection.id)
 
-    // Analyze new reviews in background
+    // Analyze new reviews with OpenAI (in background, don't await)
     const newReviews = upserted?.filter(r => !r.sentiment) || []
     if (newReviews.length > 0) {
-      // Don't await - let analysis happen in background
-      analyzeReviewsBatch(newReviews.map(r => r.id))
+      // Analyze reviews asynchronously - don't block the response
+      analyzeReviewsBatch(newReviews)
     }
 
     // Add limitation note for Yelp
@@ -377,6 +440,7 @@ export async function POST(request: NextRequest) {
       success: true,
       imported: upserted?.length || 0,
       newReviews: newReviews.length,
+      analyzingInBackground: newReviews.length > 0,
       syncMethod,
       note
     })
@@ -390,17 +454,52 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Analyze reviews in background
-async function analyzeReviewsBatch(reviewIds: string[]) {
-  for (const reviewId of reviewIds) {
+// Analyze reviews directly with OpenAI (no HTTP calls)
+async function analyzeReviewsBatch(reviews: { id: string; review_text: string; rating: number; property_id: string; reviewer_name: string }[]) {
+  for (const review of reviews) {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/reviewflow/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewId })
-      })
+      console.log(`Analyzing review ${review.id} from ${review.reviewer_name}...`)
+      
+      // Get sentiment analysis from OpenAI
+      const analysis = await analyzeReviewSentiment(review.review_text, review.rating)
+      
+      // Update the review with analysis results
+      const { error: updateError } = await supabase
+        .from('reviews')
+        .update({
+          sentiment: analysis.sentiment,
+          sentiment_score: analysis.sentimentScore,
+          topics: analysis.topics,
+          is_urgent: analysis.isUrgent,
+          auto_respond_eligible: analysis.sentiment === 'positive' && review.rating >= 4,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', review.id)
+
+      if (updateError) {
+        console.error(`Error updating review ${review.id}:`, updateError)
+        continue
+      }
+
+      console.log(`✅ Analyzed review ${review.id}: ${analysis.sentiment} (${analysis.sentimentScore})`)
+
+      // Create ticket for negative/urgent reviews
+      if (analysis.sentiment === 'negative' || analysis.isUrgent) {
+        await supabase.from('review_tickets').upsert({
+          review_id: review.id,
+          property_id: review.property_id,
+          title: analysis.isUrgent 
+            ? `🚨 URGENT: Review from ${review.reviewer_name || 'Anonymous'}`
+            : `Negative review from ${review.reviewer_name || 'Anonymous'}`,
+          description: analysis.summary,
+          priority: analysis.isUrgent ? 'urgent' : (analysis.sentimentScore < -0.5 ? 'high' : 'medium'),
+          status: 'open'
+        }, {
+          onConflict: 'review_id'
+        })
+      }
     } catch (error) {
-      console.error(`Error analyzing review ${reviewId}:`, error)
+      console.error(`Error analyzing review ${review.id}:`, error)
     }
   }
 }

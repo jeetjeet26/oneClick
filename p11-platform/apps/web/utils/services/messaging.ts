@@ -133,12 +133,14 @@ export async function sendSMS(
 
 /**
  * Send Email via Resend
+ * Supports both plain text and HTML emails
  */
 export async function sendEmail(
   to: string,
   subject: string,
   body: string,
-  from?: string
+  from?: string,
+  html?: string
 ): Promise<MessageResult> {
   const client = getResendClient()
   const fromEmail = from || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
@@ -150,6 +152,7 @@ export async function sendEmail(
     console.log(`  From: ${fromEmail}`)
     console.log(`  Subject: ${subject}`)
     console.log(`  Body: ${body.substring(0, 200)}...`)
+    console.log(`  Has HTML: ${!!html}`)
     
     return {
       success: true,
@@ -164,7 +167,7 @@ export async function sendEmail(
       to,
       subject,
       text: body,
-      // You can also add html: for rich emails
+      ...(html && { html }), // Include HTML if provided
     })
     
     console.log(`[Email] Sent to ${to}: ${result.data?.id}`)

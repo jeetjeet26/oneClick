@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Instagram,
   Facebook,
@@ -13,8 +14,10 @@ import {
   CheckCircle,
   ExternalLink,
   Loader2,
-  Clock
+  Clock,
+  Settings
 } from 'lucide-react'
+import { InstagramSetupModal } from './InstagramSetupModal'
 
 interface SocialConnection {
   id: string
@@ -36,6 +39,11 @@ interface SocialConnectionsProps {
   propertyId: string
 }
 
+interface PlatformConfig {
+  hasConfig: boolean
+  configSource: 'database' | 'environment' | null
+}
+
 const PLATFORMS = [
   {
     id: 'instagram',
@@ -45,7 +53,8 @@ const PLATFORMS = [
     bgColor: 'bg-gradient-to-r from-pink-500 to-purple-600',
     textColor: 'text-pink-600',
     description: 'Post photos and reels to Instagram',
-    available: true
+    available: true,
+    configPlatform: 'meta' // Instagram uses Meta credentials
   },
   {
     id: 'facebook',
@@ -55,7 +64,8 @@ const PLATFORMS = [
     bgColor: 'bg-blue-600',
     textColor: 'text-blue-600',
     description: 'Post to your Facebook Page',
-    available: true
+    available: true,
+    configPlatform: 'meta' // Facebook uses Meta credentials
   },
   {
     id: 'linkedin',
@@ -65,7 +75,8 @@ const PLATFORMS = [
     bgColor: 'bg-blue-700',
     textColor: 'text-blue-700',
     description: 'Share updates on LinkedIn',
-    available: false // Coming soon
+    available: false, // Coming soon
+    configPlatform: 'linkedin'
   },
   {
     id: 'twitter',
@@ -75,18 +86,39 @@ const PLATFORMS = [
     bgColor: 'bg-slate-800',
     textColor: 'text-slate-700',
     description: 'Tweet to your audience',
-    available: false // Coming soon
+    available: false, // Coming soon
+    configPlatform: 'twitter'
   }
 ]
 
 export function SocialConnections({ propertyId }: SocialConnectionsProps) {
+  const searchParams = useSearchParams()
   const [connections, setConnections] = useState<SocialConnection[]>([])
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [showSetupModal, setShowSetupModal] = useState<string | null>(null)
+  const [platformConfigs, setPlatformConfigs] = useState<Record<string, PlatformConfig>>({})
+  const [error, setError] = useState<string | null>(null)
+
+  // Check URL params for setup_required or errors
+  useEffect(() => {
+    const setupRequired = searchParams.get('setup_required')
+    const urlError = searchParams.get('error')
+    
+    if (setupRequired === 'instagram') {
+      setShowSetupModal('instagram')
+    }
+    if (urlError) {
+      setError(decodeURIComponent(urlError))
+      // Clear error after 5 seconds
+      setTimeout(() => setError(null), 5000)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     fetchConnections()
+    checkPlatformConfigs()
   }, [propertyId])
 
   const fetchConnections = async () => {
@@ -101,10 +133,42 @@ export function SocialConnections({ propertyId }: SocialConnectionsProps) {
     }
   }
 
-  const handleConnect = (platformId: string) => {
+  const checkPlatformConfigs = async () => {
+    // Check Meta config (used by both Instagram and Facebook)
+    try {
+      const res = await fetch(`/api/forgestudio/social/config?propertyId=${propertyId}&platform=meta`)
+      const data = await res.json()
+      setPlatformConfigs(prev => ({
+        ...prev,
+        meta: { hasConfig: data.hasConfig, configSource: data.configSource }
+      }))
+    } catch (error) {
+      console.error('Error checking platform config:', error)
+    }
+  }
+
+  const handleConnect = async (platformId: string) => {
+    const platform = PLATFORMS.find(p => p.id === platformId)
+    if (!platform) return
+
+    // Check if we have credentials for this platform
+    const configPlatform = platform.configPlatform
+    const config = platformConfigs[configPlatform]
+
+    if (!config?.hasConfig) {
+      // Show setup modal
+      setShowSetupModal(platformId)
+      return
+    }
+
     setConnecting(platformId)
     // Redirect to OAuth flow
     window.location.href = `/api/forgestudio/social/connect/${platformId}?propertyId=${propertyId}`
+  }
+
+  const handleSetupComplete = () => {
+    setShowSetupModal(null)
+    checkPlatformConfigs()
   }
 
   const handleDisconnect = async (connectionId: string) => {
@@ -145,6 +209,32 @@ export function SocialConnections({ propertyId }: SocialConnectionsProps) {
 
   return (
     <div className="space-y-6">
+      {/* Setup Modal */}
+      {showSetupModal === 'instagram' && (
+        <InstagramSetupModal
+          propertyId={propertyId}
+          onClose={() => setShowSetupModal(null)}
+          onConfigured={handleSetupComplete}
+        />
+      )}
+
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">Connection Error</p>
+            <p className="text-sm text-red-700 dark:text-red-300 mt-0.5">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -272,22 +362,39 @@ export function SocialConnections({ propertyId }: SocialConnectionsProps) {
                       <p className="text-sm text-slate-500 mb-3">
                         {platform.description}
                       </p>
-                      <button
-                        onClick={() => handleConnect(platform.id)}
-                        disabled={!platform.available || isConnecting}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                          platform.available
-                            ? `bg-gradient-to-r ${platform.color} text-white hover:opacity-90`
-                            : 'bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
-                        }`}
-                      >
-                        {isConnecting ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Plus className="w-4 h-4" />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleConnect(platform.id)}
+                          disabled={!platform.available || isConnecting}
+                          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                            platform.available
+                              ? `bg-gradient-to-r ${platform.color} text-white hover:opacity-90`
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {isConnecting ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4" />
+                          )}
+                          {isConnecting ? 'Connecting...' : 'Connect'}
+                        </button>
+                        {platform.available && platformConfigs[platform.configPlatform]?.hasConfig && (
+                          <button
+                            onClick={() => setShowSetupModal(platform.id)}
+                            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                            title="Update credentials"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
                         )}
-                        {isConnecting ? 'Connecting...' : 'Connect'}
-                      </button>
+                      </div>
+                      {platform.available && !platformConfigs[platform.configPlatform]?.hasConfig && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          Setup required - click Connect to configure
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

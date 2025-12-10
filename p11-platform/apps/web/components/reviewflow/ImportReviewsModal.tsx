@@ -1,16 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   X, Upload, Loader2, FileText, Globe, Check, AlertCircle,
   ChevronRight, ExternalLink, Info, Search, RefreshCw
 } from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
 import { PlatformIcon } from './PlatformIcon'
 
 interface ImportReviewsModalProps {
   propertyId: string
   onClose: () => void
   onImported: () => void
+}
+
+interface PropertyData {
+  name: string
+  address: {
+    street?: string
+    city?: string
+    state?: string
+    zip?: string
+    full?: string
+  } | null
 }
 
 type ImportMethod = 'manual' | 'csv' | 'google-api' | 'google-scraper' | 'yelp'
@@ -32,12 +44,16 @@ const PLATFORMS = [
 ]
 
 export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportReviewsModalProps) {
+  const supabase = createClient()
   const [step, setStep] = useState<ImportStep>('select')
   const [method, setMethod] = useState<ImportMethod | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [importedCount, setImportedCount] = useState(0)
   const [limitationNote, setLimitationNote] = useState<string | null>(null)
+  
+  // Property data (fetched on mount)
+  const [propertyData, setPropertyData] = useState<PropertyData | null>(null)
   
   // Manual entry
   const [manualReview, setManualReview] = useState<ManualReview>({
@@ -56,7 +72,41 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
   const [googlePlaceId, setGooglePlaceId] = useState('')
   const [googlePropertyName, setGooglePropertyName] = useState('')
   const [googleAddress, setGoogleAddress] = useState('')
-  const [googleConnectionType, setGoogleConnectionType] = useState<'api' | 'scraper'>('api')
+  const [googleConnectionType, setGoogleConnectionType] = useState<'api' | 'scraper'>('scraper') // Default to full scrape
+  
+  // Fetch property data on mount
+  useEffect(() => {
+    async function fetchProperty() {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('name, address')
+        .eq('id', propertyId)
+        .single()
+      
+      if (data && !error) {
+        setPropertyData(data)
+        
+        // Pre-populate Google search fields
+        setGooglePropertyName(data.name || '')
+        
+        // Format address from JSON
+        if (data.address) {
+          const addr = data.address as PropertyData['address']
+          if (addr?.full) {
+            setGoogleAddress(addr.full)
+          } else if (addr?.street) {
+            const parts = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean)
+            setGoogleAddress(parts.join(' '))
+          }
+        }
+      }
+    }
+    
+    if (propertyId) {
+      fetchProperty()
+    }
+  }, [propertyId, supabase])
+  
   const [searchingGoogle, setSearchingGoogle] = useState(false)
   const [foundPlaceId, setFoundPlaceId] = useState<string | null>(null)
   const [foundPlaceName, setFoundPlaceName] = useState<string | null>(null)
@@ -598,6 +648,7 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                       Property Name <span className="text-red-500">*</span>
+                      {propertyData?.name && <span className="text-xs text-green-500 ml-2">✓ Auto-filled</span>}
                     </label>
                     <input
                       type="text"
@@ -611,6 +662,7 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                       Address <span className="text-red-500">*</span>
+                      {propertyData?.address && <span className="text-xs text-green-500 ml-2">✓ Auto-filled</span>}
                     </label>
                     <input
                       type="text"
@@ -685,19 +737,19 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
                         : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
                     }`}
                   >
-                    <div className="font-medium text-slate-900 dark:text-white">API (Recommended)</div>
-                    <p className="text-xs text-slate-500 mt-1">Uses Google Places API</p>
+                    <div className="font-medium text-slate-900 dark:text-white">Quick (5 reviews)</div>
+                    <p className="text-xs text-slate-500 mt-1">Fast, uses Google API</p>
                   </button>
                   <button
                     onClick={() => setGoogleConnectionType('scraper')}
                     className={`p-3 border rounded-lg text-left transition-all ${
                       googleConnectionType === 'scraper'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                         : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
                     }`}
                   >
-                    <div className="font-medium text-slate-900 dark:text-white">Scraper</div>
-                    <p className="text-xs text-slate-500 mt-1">Alternative method (beta)</p>
+                    <div className="font-medium text-slate-900 dark:text-white">Full Scrape ✨</div>
+                    <p className="text-xs text-slate-500 mt-1">Gets ALL reviews (slower)</p>
                   </button>
                 </div>
               </div>

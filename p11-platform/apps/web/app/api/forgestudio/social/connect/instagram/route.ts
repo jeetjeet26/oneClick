@@ -1,4 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+// Helper to decrypt stored secrets
+function decrypt(encrypted: string): string {
+  if (!encrypted.startsWith('enc_')) return encrypted
+  const mixed = encrypted.slice(4)
+  return Buffer.from(mixed, 'base64').toString('utf-8')
+}
+
+// Get Meta credentials from DB or env
+async function getMetaCredentials(propertyId: string): Promise<{
+  appId: string
+  appSecret: string
+} | null> {
+  // First check database
+  const { data } = await supabase
+    .from('social_auth_configs')
+    .select('app_id, app_secret_encrypted')
+    .eq('property_id', propertyId)
+    .eq('platform', 'meta')
+    .single()
+
+  if (data) {
+    return {
+      appId: data.app_id,
+      appSecret: decrypt(data.app_secret_encrypted)
+    }
+  }
+
+  // Fallback to environment variables
+  if (process.env.META_APP_ID && process.env.META_APP_SECRET) {
+    return {
+      appId: process.env.META_APP_ID,
+      appSecret: process.env.META_APP_SECRET
+    }
+  }
+
+  return null
+}
 
 // Instagram/Facebook OAuth - Start the connection flow
 // This redirects to Meta's OAuth page
@@ -8,17 +52,19 @@ export async function GET(request: NextRequest) {
     const propertyId = searchParams.get('propertyId')
 
     if (!propertyId) {
-      return NextResponse.json(
-        { error: 'Property ID required' },
-        { status: 400 }
+      // Redirect back with error instead of returning JSON
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/forgestudio?tab=connections&error=${encodeURIComponent('Property ID required')}`
       )
     }
 
-    const clientId = process.env.META_APP_ID
-    if (!clientId) {
-      return NextResponse.json(
-        { error: 'Meta App ID not configured. Please add META_APP_ID to environment variables.' },
-        { status: 500 }
+    // Get credentials from DB or environment
+    const credentials = await getMetaCredentials(propertyId)
+    
+    if (!credentials) {
+      // Redirect back with setup_required flag - the UI will show the setup modal
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/forgestudio?tab=connections&setup_required=instagram&propertyId=${propertyId}`
       )
     }
 
@@ -37,7 +83,7 @@ export async function GET(request: NextRequest) {
     ].join(',')
 
     const authUrl = new URL('https://www.facebook.com/v18.0/dialog/oauth')
-    authUrl.searchParams.set('client_id', clientId)
+    authUrl.searchParams.set('client_id', credentials.appId)
     authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('scope', scopes)
     authUrl.searchParams.set('state', state)
@@ -47,9 +93,9 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Instagram OAuth error:', error)
-    return NextResponse.json(
-      { error: 'Failed to start Instagram connection' },
-      { status: 500 }
+    // Redirect back with error instead of returning JSON
+    return NextResponse.redirect(
+      `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/forgestudio?tab=connections&error=${encodeURIComponent('Failed to start Instagram connection')}`
     )
   }
 }

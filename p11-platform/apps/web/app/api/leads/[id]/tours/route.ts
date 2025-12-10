@@ -1,7 +1,9 @@
 import { createClient } from '@/utils/supabase/server'
 import { createServiceClient } from '@/utils/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
-import { format, addHours, isBefore, isToday, isTomorrow } from 'date-fns'
+import { format } from 'date-fns'
+import { generateTourEmail, TourEmailContext } from '@/utils/services/tour-email-generator'
+import { sendEmail } from '@/utils/services/messaging'
 
 type TourStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 type TourType = 'in_person' | 'virtual' | 'self_guided'
@@ -306,7 +308,7 @@ export async function DELETE(
   }
 }
 
-// Helper function to send tour confirmation
+// Helper function to send tour confirmation with LLM-generated personalized email
 async function sendTourConfirmation(
   supabase: ReturnType<typeof createServiceClient>,
   tour: any,
@@ -317,44 +319,119 @@ async function sendTourConfirmation(
     const property = lead.property || {}
     const tourDate = format(new Date(tour.tour_date), 'EEEE, MMMM d, yyyy')
     const tourTime = format(new Date(`2000-01-01T${tour.tour_time}`), 'h:mm a')
-    const tourTypeLabels: Record<string, string> = {
-      in_person: 'In-Person Tour',
-      virtual: 'Virtual Tour',
-      self_guided: 'Self-Guided Tour'
+
+    // Fetch conversation history if this lead came from Luma or has chat history
+    let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    
+    try {
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          messages(role, content, created_at)
+        `)
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (conversations && conversations.length > 0 && conversations[0].messages) {
+        // Sort messages by created_at and format for context
+        const messages = conversations[0].messages as Array<{ role: string; content: string; created_at: string }>
+        conversationHistory = messages
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content
+          }))
+      }
+    } catch (err) {
+      console.log('[Tour Confirmation] No conversation history found, proceeding without it')
     }
 
-    // Prepare template variables
-    const variables = {
-      first_name: lead.first_name,
-      property_name: property.name || 'the property',
-      tour_date: tourDate,
-      tour_time: tourTime,
-      tour_type: tourTypeLabels[tour.tour_type] || 'Tour',
-      property_address: property.address?.street || ''
+    // Build context for LLM email generation
+    const emailContext: TourEmailContext = {
+      lead: {
+        firstName: lead.first_name,
+        lastName: lead.last_name,
+        email: lead.email,
+        source: lead.source || 'unknown',
+        moveInDate: lead.move_in_date,
+        bedrooms: lead.bedrooms,
+        notes: lead.notes
+      },
+      tour: {
+        date: tourDate,
+        time: tourTime,
+        type: tour.tour_type as 'in_person' | 'virtual' | 'self_guided'
+      },
+      property: {
+        name: property.name || 'our community',
+        address: property.address?.street || property.address?.full || '',
+        websiteUrl: property.website_url,
+        amenities: property.amenities || [],
+        petPolicy: property.pet_policy,
+        parkingInfo: property.parking_info,
+        brandVoice: property.brand_voice,
+        officeHours: property.office_hours
+      },
+      conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
+      isReschedule
     }
 
-    // Try SMS first if phone available
-    if (lead.phone) {
-      // For now, just log - in production this would call Twilio
-      console.log(`[Tour Confirmation] Would send SMS to ${lead.phone}:`, {
-        template: 'tour_confirmation_sms',
-        variables
-      })
-
-      // Mark confirmation as sent
-      await supabase
-        .from('tours')
-        .update({ confirmation_sent_at: new Date().toISOString() })
-        .eq('id', tour.id)
-    }
-
-    // Also send email if available
+    // Send email if available
     if (lead.email) {
-      // For now, just log - in production this would call Resend
-      console.log(`[Tour Confirmation] Would send email to ${lead.email}:`, {
-        template: 'tour_confirmation_email',
-        variables
-      })
+      console.log(`[Tour Confirmation] Generating personalized email for ${lead.email}...`)
+      
+      // Generate personalized email using LLM
+      const generatedEmail = await generateTourEmail(emailContext)
+      
+      console.log(`[Tour Confirmation] Generated email with subject: "${generatedEmail.subject}"`)
+      
+      // Send via Resend
+      const emailResult = await sendEmail(
+        lead.email,
+        generatedEmail.subject,
+        generatedEmail.textBody,
+        undefined, // use default from email
+        generatedEmail.htmlBody
+      )
+
+      if (emailResult.success) {
+        console.log(`[Tour Confirmation] ✅ Email sent to ${lead.email}, ID: ${emailResult.messageId}`)
+        
+        // Mark confirmation as sent
+        await supabase
+          .from('tours')
+          .update({ confirmation_sent_at: new Date().toISOString() })
+          .eq('id', tour.id)
+
+        // Log activity
+        await supabase
+          .from('lead_activities')
+          .insert({
+            lead_id: lead.id,
+            type: 'email_sent',
+            description: isReschedule 
+              ? 'Tour reschedule confirmation sent'
+              : 'Tour confirmation email sent',
+            metadata: {
+              tour_id: tour.id,
+              email_subject: generatedEmail.subject,
+              email_message_id: emailResult.messageId,
+              tour_date: tourDate,
+              tour_time: tourTime,
+              tour_type: tour.tour_type,
+              had_conversation_context: conversationHistory.length > 0
+            }
+          })
+      } else {
+        console.error(`[Tour Confirmation] ❌ Failed to send email: ${emailResult.error}`)
+      }
+    }
+
+    // TODO: Also send SMS if phone available (when Twilio is configured)
+    if (lead.phone && !lead.email) {
+      console.log(`[Tour Confirmation] SMS would be sent to ${lead.phone} (Twilio not configured)`)
     }
 
     return true

@@ -1339,6 +1339,85 @@ async def search_and_scrape_google_reviews(request: GoogleReviewsSearchRequest):
         }
 
 
+class GoogleReviewsFullRequest(BaseModel):
+    place_id: str
+    max_reviews: int = 100
+
+
+@app.post('/scraper/google-reviews/full')
+async def scrape_all_google_reviews(request: GoogleReviewsFullRequest):
+    """
+    Fetch ALL reviews from Google Maps using SerpAPI.
+    
+    Unlike the standard /scraper/google-reviews endpoint (limited to 5 reviews
+    by Google's API), this endpoint uses SerpAPI to get ALL reviews with
+    proper pagination.
+    
+    Args:
+        place_id: Google Place ID
+        max_reviews: Maximum reviews to fetch (default 100)
+    """
+    try:
+        from scrapers.serpapi_reviews import SerpApiReviewsScraper, is_serpapi_configured
+        from scrapers.google_places import GooglePlacesScraper
+        
+        # Try SerpAPI first (preferred - gets ALL reviews)
+        if is_serpapi_configured():
+            try:
+                logger.info(f"[Full Scraper] Using SerpAPI for {request.place_id}")
+                scraper = SerpApiReviewsScraper()
+                result = scraper.get_reviews(
+                    place_id=request.place_id,
+                    max_reviews=request.max_reviews
+                )
+                
+                if result.get('success') and len(result.get('reviews', [])) > 0:
+                    logger.info(f"[Full Scraper] SerpAPI succeeded with {len(result['reviews'])} reviews")
+                    return result
+                else:
+                    logger.warning(f"[Full Scraper] SerpAPI returned no reviews: {result.get('error', 'unknown')}")
+            except Exception as e:
+                logger.warning(f"[Full Scraper] SerpAPI failed: {e}, falling back to Google API...")
+        else:
+            logger.warning("[Full Scraper] SerpAPI not configured, using Google API fallback")
+        
+        # Fallback to Google Places API (5 reviews max, but reliable)
+        logger.info("[Full Scraper] Using Google Places API fallback...")
+        api_key = os.environ.get('GOOGLE_MAPS_API_KEY')
+        if not api_key:
+            return {
+                'success': False,
+                'error': 'Neither SerpAPI nor Google Maps API key configured',
+                'reviews': []
+            }
+        
+        api_scraper = GooglePlacesScraper(api_key=api_key)
+        api_reviews = api_scraper.get_place_reviews(request.place_id)
+        
+        return {
+            'success': len(api_reviews) > 0,
+            'place_id': request.place_id,
+            'reviews': [r.to_dict() for r in api_reviews],
+            'reviews_fetched': len(api_reviews),
+            'method': 'google_api_fallback',
+            'note': f'SerpAPI not available. Retrieved {len(api_reviews)} reviews via Google Places API (max 5).'
+        }
+        
+    except ImportError as e:
+        return {
+            'success': False,
+            'error': f'Import error: {e}',
+            'reviews': []
+        }
+    except Exception as e:
+        logger.error(f"Google full review scraping error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+
+
 @app.post('/scraper/yelp-reviews')
 async def scrape_yelp_reviews(request: YelpReviewsRequest):
     """
@@ -1527,6 +1606,7 @@ def get_reviews_scraper_status():
     from scrapers.yelp import is_yelp_configured
     
     google_configured = bool(os.environ.get('GOOGLE_MAPS_API_KEY'))
+    serpapi_configured = bool(os.environ.get('SERPAPI_API_KEY'))
     yelp_configured = is_yelp_configured()
     
     return {
@@ -1544,6 +1624,17 @@ def get_reviews_scraper_status():
                 "No pagination available in standard API",
                 "Advanced reviews require Places API (New) paid tier"
             ]
+        },
+        "serpapi": {
+            "configured": serpapi_configured,
+            "status": "ready" if serpapi_configured else "SERPAPI_API_KEY required",
+            "reviews_per_request": "unlimited",
+            "features": {
+                "fetch_all_reviews": serpapi_configured,
+                "pagination": serpapi_configured,
+                "sort_options": serpapi_configured
+            },
+            "note": "Use /scraper/google-reviews/full endpoint to get ALL reviews"
         },
         "yelp": {
             "configured": yelp_configured,
