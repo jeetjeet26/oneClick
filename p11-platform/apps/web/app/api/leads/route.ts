@@ -198,7 +198,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { leadId, status, notes, moveInDate, bedrooms } = body
+    const { 
+      leadId, 
+      status, 
+      notes, 
+      moveInDate, 
+      bedrooms,
+      firstName,
+      lastName,
+      email,
+      phone,
+      source
+    } = body
 
     if (!leadId) {
       return NextResponse.json({ error: 'Lead ID is required' }, { status: 400 })
@@ -233,6 +244,11 @@ export async function PATCH(request: NextRequest) {
     if (notes !== undefined) updateData.notes = notes
     if (moveInDate !== undefined) updateData.move_in_date = moveInDate
     if (bedrooms !== undefined) updateData.bedrooms = bedrooms
+    if (firstName !== undefined) updateData.first_name = firstName
+    if (lastName !== undefined) updateData.last_name = lastName
+    if (email !== undefined) updateData.email = email
+    if (phone !== undefined) updateData.phone = phone
+    if (source !== undefined) updateData.source = source
 
     const { data: lead, error } = await supabase
       .from('leads')

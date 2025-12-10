@@ -32,10 +32,12 @@ import {
   Building2,
   BedDouble,
   FileText,
-  MapPin
+  MapPin,
+  Settings
 } from 'lucide-react'
 import { formatDistanceToNow, format, parseISO, isAfter } from 'date-fns'
 import { TourScheduleModal } from '@/components/leads/TourScheduleModal'
+import { ActivityTimeline } from '@/components/leads/ActivityTimeline'
 
 type Lead = {
   id: string
@@ -1018,6 +1020,275 @@ function TourCard({
   )
 }
 
+type Activity = {
+  id: string
+  type: string
+  description: string
+  metadata?: Record<string, unknown>
+  created_at: string
+  created_by_user?: {
+    id: string
+    full_name: string | null
+  }
+}
+
+function EditLeadModal({
+  isOpen,
+  onClose,
+  lead,
+  onUpdated
+}: {
+  isOpen: boolean
+  onClose: () => void
+  lead: Lead
+  onUpdated: (updatedLead: Lead) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    firstName: lead.first_name,
+    lastName: lead.last_name,
+    email: lead.email || '',
+    phone: lead.phone || '',
+    source: lead.source,
+    bedrooms: lead.bedrooms || '',
+    moveInDate: lead.move_in_date || '',
+    notes: lead.notes || '',
+  })
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        firstName: lead.first_name,
+        lastName: lead.last_name,
+        email: lead.email || '',
+        phone: lead.phone || '',
+        source: lead.source,
+        bedrooms: lead.bedrooms || '',
+        moveInDate: lead.move_in_date || '',
+        notes: lead.notes || '',
+      })
+    }
+  }, [isOpen, lead])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const response = await fetch('/api/leads', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId: lead.id,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email || null,
+          phone: formData.phone || null,
+          source: formData.source,
+          bedrooms: formData.bedrooms || null,
+          moveInDate: formData.moveInDate || null,
+          notes: formData.notes || null,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update lead')
+      }
+
+      const { lead: updatedLead } = await response.json()
+      onUpdated(updatedLead)
+      onClose()
+    } catch (err) {
+      console.error('Error updating lead:', err)
+      alert('Failed to update lead. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <>
+      <div 
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[80]"
+        onClick={onClose}
+      />
+      <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div className="modal-light-mode bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+            <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <User className="text-indigo-600" size={20} />
+              Edit Lead
+            </h2>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <X size={20} className="text-slate-500" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  First Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.firstName}
+                  onChange={e => setFormData(d => ({ ...d, firstName: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Last Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.lastName}
+                  onChange={e => setFormData(d => ({ ...d, lastName: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Email
+              </label>
+              <div className="relative">
+                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={e => setFormData(d => ({ ...d, email: e.target.value }))}
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Phone
+              </label>
+              <div className="relative">
+                <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={e => setFormData(d => ({ ...d, phone: e.target.value }))}
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Source
+                </label>
+                <select
+                  value={formData.source}
+                  onChange={e => setFormData(d => ({ ...d, source: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  <option value="manual">Manual Entry</option>
+                  <option value="walk-in">Walk-in</option>
+                  <option value="phone">Phone Inquiry</option>
+                  <option value="website">Website</option>
+                  <option value="zillow">Zillow</option>
+                  <option value="apartments.com">Apartments.com</option>
+                  <option value="google_ads">Google Ads</option>
+                  <option value="meta_ads">Meta Ads</option>
+                  <option value="referral">Referral</option>
+                  <option value="LumaLeasing">LumaLeasing</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Bedrooms
+                </label>
+                <select
+                  value={formData.bedrooms}
+                  onChange={e => setFormData(d => ({ ...d, bedrooms: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  <option value="">Not specified</option>
+                  <option value="studio">Studio</option>
+                  <option value="1bd">1 Bedroom</option>
+                  <option value="2bd">2 Bedroom</option>
+                  <option value="3bd">3 Bedroom</option>
+                  <option value="4bd+">4+ Bedroom</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Target Move-in Date
+              </label>
+              <div className="relative">
+                <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={formData.moveInDate}
+                  onChange={e => setFormData(d => ({ ...d, moveInDate: e.target.value }))}
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Notes
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))}
+                rows={3}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                placeholder="Any additional notes about the lead..."
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || (!formData.email && !formData.phone)}
+                className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
+  )
+}
+
 function LeadDetailDrawer({ 
   lead, 
   onClose,
@@ -1032,10 +1303,12 @@ function LeadDetailDrawer({
   const [workflow, setWorkflow] = useState<Workflow | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [tours, setTours] = useState<Tour[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
   const [activeTab, setActiveTab] = useState<'details' | 'tours' | 'activity' | 'automation'>('details')
   const [showSendMessage, setShowSendMessage] = useState(false)
   const [showScheduleTour, setShowScheduleTour] = useState(false)
   const [editingTour, setEditingTour] = useState<Tour | null>(null)
+  const [showEditLead, setShowEditLead] = useState(false)
 
   // Fetch workflow, conversations, and tours when lead changes
   useEffect(() => {
@@ -1073,6 +1346,17 @@ function LeadDetailDrawer({
         }
       } catch (err) {
         console.error('Failed to fetch tours:', err)
+      }
+
+      // Fetch activities
+      try {
+        const activitiesRes = await fetch(`/api/leads/${lead.id}/activities`)
+        if (activitiesRes.ok) {
+          const data = await activitiesRes.json()
+          setActivities(data.activities || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch activities:', err)
       }
     }
 
@@ -1144,12 +1428,21 @@ function LeadDetailDrawer({
       <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300">
         <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
           <h2 className="text-lg font-semibold text-slate-900">Lead Details</h2>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <X size={20} className="text-slate-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowEditLead(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+            >
+              <Settings size={16} />
+              Edit
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <X size={20} className="text-slate-500" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -1465,8 +1758,23 @@ function LeadDetailDrawer({
 
           {activeTab === 'activity' && (
             <div>
-              <h4 className="text-sm font-medium text-slate-700 mb-3">Conversation History</h4>
-              <ConversationHistory conversations={conversations} />
+              <h4 className="text-sm font-medium text-slate-700 mb-3">Activity Timeline</h4>
+              <ActivityTimeline 
+                activities={activities} 
+                leadId={lead.id}
+                onActivityAdded={async () => {
+                  // Refresh activities
+                  try {
+                    const activitiesRes = await fetch(`/api/leads/${lead.id}/activities`)
+                    if (activitiesRes.ok) {
+                      const data = await activitiesRes.json()
+                      setActivities(data.activities || [])
+                    }
+                  } catch (err) {
+                    console.error('Failed to refresh activities:', err)
+                  }
+                }}
+              />
             </div>
           )}
 
@@ -1515,6 +1823,19 @@ function LeadDetailDrawer({
           // Also trigger a parent refresh to update lead status
         }}
       />
+
+      {/* Edit Lead Modal */}
+      {showEditLead && (
+        <EditLeadModal
+          isOpen={showEditLead}
+          onClose={() => setShowEditLead(false)}
+          lead={lead}
+          onUpdated={(updatedLead) => {
+            // Update the local state with the updated lead
+            onStatusChange(updatedLead.id, updatedLead.status)
+          }}
+        />
+      )}
     </>
   )
 }

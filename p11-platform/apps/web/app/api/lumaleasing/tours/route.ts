@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/admin';
+import { generateTourCalendarResponse, CalendarLinks } from '@/utils/services/calendar-invite';
+import { sendEmail, EmailAttachment } from '@/utils/services/messaging';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -129,10 +131,20 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServiceClient();
 
-    // Validate API key
+    // Validate API key and get property info
     const { data: config } = await supabase
       .from('lumaleasing_config')
-      .select('property_id, tours_enabled')
+      .select(`
+        property_id, 
+        tours_enabled,
+        properties!inner(
+          id,
+          name,
+          address,
+          contact_email,
+          website_url
+        )
+      `)
       .eq('api_key', apiKey)
       .eq('is_active', true)
       .single();
@@ -143,6 +155,15 @@ export async function POST(req: NextRequest) {
         { status: 404, headers: corsHeaders }
       );
     }
+
+    // Extract property info
+    const property = config.properties as { 
+      id: string
+      name: string
+      address?: { street?: string; full?: string }
+      contact_email?: string
+      website_url?: string 
+    } | null;
 
     // Verify slot is available
     const { data: slot } = await supabase
@@ -257,6 +278,58 @@ export async function POST(req: NextRequest) {
         metadata: { booking_id: booking.id },
       });
 
+    // Generate calendar response (Calendly-style)
+    const propertyName = property?.name || 'Property Tour';
+    const propertyAddress = property?.address?.street || property?.address?.full;
+    const durationMinutes = booking.duration_minutes || 30;
+
+    const calendarResponse = generateTourCalendarResponse({
+      propertyName,
+      propertyAddress,
+      tourDate: booking.scheduled_date,
+      tourTime: booking.scheduled_time,
+      tourType: 'in_person', // Default to in-person for widget bookings
+      durationMinutes,
+      prospectName: `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim() || 'Guest',
+      prospectEmail: leadInfo.email,
+      propertyEmail: property?.contact_email || process.env.RESEND_FROM_EMAIL,
+      specialRequests: specialRequests
+    });
+
+    // Send confirmation email with .ics calendar attachment
+    const emailSubject = `Your Tour at ${propertyName} is Confirmed! 📅`;
+    const emailBody = buildConfirmationEmail(
+      leadInfo.first_name || 'there',
+      propertyName,
+      formatDate(booking.scheduled_date),
+      formatTime(booking.scheduled_time),
+      propertyAddress
+    );
+
+    const attachments: EmailAttachment[] = [{
+      filename: calendarResponse.icsAttachment.filename,
+      content: calendarResponse.icsAttachment.content,
+      contentType: calendarResponse.icsAttachment.contentType
+    }];
+
+    // Send email asynchronously (don't block response)
+    sendEmail(
+      leadInfo.email,
+      emailSubject,
+      emailBody.text,
+      undefined,
+      emailBody.html,
+      attachments
+    ).then(result => {
+      if (result.success) {
+        console.log(`[LumaLeasing Tours] ✅ Confirmation email sent to ${leadInfo.email}`);
+      } else {
+        console.error(`[LumaLeasing Tours] ❌ Failed to send email: ${result.error}`);
+      }
+    }).catch(err => {
+      console.error('[LumaLeasing Tours] Email error:', err);
+    });
+
     return NextResponse.json({
       success: true,
       booking: {
@@ -265,7 +338,15 @@ export async function POST(req: NextRequest) {
         time: booking.scheduled_time,
         status: booking.status,
       },
-      message: `Great! Your tour is confirmed for ${formatDate(booking.scheduled_date)} at ${formatTime(booking.scheduled_time)}. We'll send a confirmation to ${leadInfo.email}.`,
+      // Calendly-style calendar links for "Add to Calendar" buttons
+      calendar: {
+        google: calendarResponse.calendarLinks.google,
+        outlook: calendarResponse.calendarLinks.outlook,
+        office365: calendarResponse.calendarLinks.office365,
+        yahoo: calendarResponse.calendarLinks.yahoo,
+        icsDownload: calendarResponse.calendarLinks.icsDownload,
+      },
+      message: `Great! Your tour is confirmed for ${formatDate(booking.scheduled_date)} at ${formatTime(booking.scheduled_time)}. We've sent a confirmation with a calendar invite to ${leadInfo.email}.`,
     }, { headers: corsHeaders });
 
   } catch (error) {
@@ -288,5 +369,110 @@ function formatTime(timeStr: string): string {
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const hour12 = hour % 12 || 12;
   return `${hour12}:${minutes} ${ampm}`;
+}
+
+function buildConfirmationEmail(
+  firstName: string,
+  propertyName: string,
+  tourDate: string,
+  tourTime: string,
+  propertyAddress?: string
+): { text: string; html: string } {
+  const text = `Hi ${firstName}!
+
+Your tour at ${propertyName} is confirmed! 🎉
+
+📅 Date: ${tourDate}
+🕐 Time: ${tourTime}
+${propertyAddress ? `📍 Address: ${propertyAddress}` : ''}
+
+We've attached a calendar invite to this email - just open it to add this tour to your calendar!
+
+When you arrive, check in at the leasing office and we'll take care of the rest.
+
+Need to reschedule? Just reply to this email.
+
+See you soon!
+The ${propertyName} Team`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+      
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 32px; text-align: center;">
+        <h1 style="margin: 0; color: white; font-size: 24px; font-weight: 600;">Tour Confirmed! 🎉</h1>
+      </div>
+      
+      <!-- Content -->
+      <div style="padding: 32px;">
+        <p style="margin: 0 0 24px; font-size: 16px; color: #374151; line-height: 1.6;">
+          Hi ${firstName}!
+        </p>
+        
+        <p style="margin: 0 0 24px; font-size: 16px; color: #374151; line-height: 1.6;">
+          Your tour at <strong>${propertyName}</strong> is all set!
+        </p>
+        
+        <!-- Tour Details Card -->
+        <div style="background: #f9fafb; border-radius: 12px; padding: 24px; margin: 0 0 24px;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 20px; margin-right: 12px;">📅</span>
+            <span style="font-size: 18px; font-weight: 600; color: #111827;">${tourDate}</span>
+          </div>
+          <div style="display: flex; align-items: center; margin-bottom: ${propertyAddress ? '12px' : '0'};">
+            <span style="font-size: 20px; margin-right: 12px;">🕐</span>
+            <span style="font-size: 18px; font-weight: 600; color: #111827;">${tourTime}</span>
+          </div>
+          ${propertyAddress ? `
+          <div style="display: flex; align-items: center;">
+            <span style="font-size: 20px; margin-right: 12px;">📍</span>
+            <span style="font-size: 16px; color: #4b5563;">${propertyAddress}</span>
+          </div>
+          ` : ''}
+        </div>
+        
+        <!-- Calendar Reminder -->
+        <div style="background: #fef3c7; border-radius: 8px; padding: 16px; margin: 0 0 24px;">
+          <p style="margin: 0; font-size: 14px; color: #92400e;">
+            <strong>📎 Calendar Invite Attached!</strong><br>
+            Open the attached .ics file to add this tour to your calendar automatically.
+          </p>
+        </div>
+        
+        <p style="margin: 0 0 16px; font-size: 16px; color: #374151; line-height: 1.6;">
+          When you arrive, just check in at the leasing office and we'll take care of the rest.
+        </p>
+        
+        <p style="margin: 0 0 24px; font-size: 14px; color: #6b7280;">
+          Need to reschedule? Just reply to this email.
+        </p>
+        
+        <p style="margin: 0; font-size: 16px; color: #374151;">
+          See you soon!<br>
+          <strong>The ${propertyName} Team</strong>
+        </p>
+      </div>
+      
+    </div>
+    
+    <!-- Footer -->
+    <div style="text-align: center; padding: 24px;">
+      <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+        Powered by LumaLeasing
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { text, html };
 }
 

@@ -3,7 +3,8 @@ import { createServiceClient } from '@/utils/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { format } from 'date-fns'
 import { generateTourEmail, TourEmailContext } from '@/utils/services/tour-email-generator'
-import { sendEmail } from '@/utils/services/messaging'
+import { sendEmail, EmailAttachment } from '@/utils/services/messaging'
+import { generateTourICS, getICSAttachment, generateCalendarLinks, CalendarLinks } from '@/utils/services/calendar-invite'
 
 type TourStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 type TourType = 'in_person' | 'virtual' | 'self_guided'
@@ -43,14 +44,41 @@ export async function GET(
       throw error
     }
 
-    // Also fetch the lead info
+    // Fetch the lead info with property
     const { data: lead } = await supabase
       .from('leads')
-      .select('id, first_name, last_name, email, phone, property_id')
+      .select('id, first_name, last_name, email, phone, property_id, property:property_id(id, name, address)')
       .eq('id', leadId)
       .single()
 
-    return NextResponse.json({ tours: tours || [], lead })
+    // Generate calendar links for each tour (Calendly-style)
+    const property = (lead?.property as { id: string; name?: string; address?: { street?: string; full?: string } }) || {}
+    const toursWithCalendar = (tours || []).map(tour => {
+      // Only generate links for upcoming tours
+      if (['scheduled', 'confirmed'].includes(tour.status)) {
+        const calendarLinks = generateCalendarLinks({
+          propertyName: property.name || 'Property Tour',
+          propertyAddress: property.address?.street || property.address?.full,
+          tourDate: tour.tour_date,
+          tourTime: tour.tour_time,
+          tourType: tour.tour_type as 'in_person' | 'virtual' | 'self_guided',
+          durationMinutes: 30
+        })
+        return {
+          ...tour,
+          calendar: {
+            google: calendarLinks.google,
+            outlook: calendarLinks.outlook,
+            office365: calendarLinks.office365,
+            yahoo: calendarLinks.yahoo,
+            icsDownload: calendarLinks.icsDownload,
+          }
+        }
+      }
+      return tour
+    })
+
+    return NextResponse.json({ tours: toursWithCalendar, lead })
   } catch (error) {
     console.error('Tours fetch error:', error)
     return NextResponse.json({ error: 'Failed to fetch tours' }, { status: 500 })
@@ -143,7 +171,29 @@ export async function POST(
       await sendTourConfirmation(supabase, tour, lead)
     }
 
-    return NextResponse.json({ tour, lead }, { status: 201 })
+    // Generate calendar links (Calendly-style) for admin to preview/share
+    const property = lead.property || {}
+    const calendarLinks = generateCalendarLinks({
+      propertyName: property.name || 'Property Tour',
+      propertyAddress: property.address?.street || property.address?.full,
+      tourDate: tour.tour_date,
+      tourTime: tour.tour_time,
+      tourType: tour.tour_type as 'in_person' | 'virtual' | 'self_guided',
+      durationMinutes: 30
+    })
+
+    return NextResponse.json({ 
+      tour, 
+      lead,
+      // Calendly-style calendar links for admin to preview/share
+      calendar: {
+        google: calendarLinks.google,
+        outlook: calendarLinks.outlook,
+        office365: calendarLinks.office365,
+        yahoo: calendarLinks.yahoo,
+        icsDownload: calendarLinks.icsDownload,
+      }
+    }, { status: 201 })
   } catch (error) {
     console.error('Tour creation error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -228,20 +278,40 @@ export async function PATCH(
       return NextResponse.json({ error: 'Failed to update tour' }, { status: 500 })
     }
 
+    // Fetch lead and property info for calendar links and notification
+    const { data: lead } = await supabase
+      .from('leads')
+      .select('*, property:property_id(*)')
+      .eq('id', leadId)
+      .single()
+
     // Send notification if rescheduled and requested
-    if (sendNotification && (tourDate || tourTime)) {
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('*, property:property_id(*)')
-        .eq('id', leadId)
-        .single()
-      
-      if (lead) {
-        await sendTourConfirmation(supabase, tour, lead, true) // true = reschedule notification
-      }
+    if (sendNotification && (tourDate || tourTime) && lead) {
+      await sendTourConfirmation(supabase, tour, lead, true) // true = reschedule notification
     }
 
-    return NextResponse.json({ tour })
+    // Generate calendar links (Calendly-style) for admin to preview/share
+    const property = lead?.property || {}
+    const calendarLinks = generateCalendarLinks({
+      propertyName: property.name || 'Property Tour',
+      propertyAddress: property.address?.street || property.address?.full,
+      tourDate: tour.tour_date,
+      tourTime: tour.tour_time,
+      tourType: tour.tour_type as 'in_person' | 'virtual' | 'self_guided',
+      durationMinutes: 30
+    })
+
+    return NextResponse.json({ 
+      tour,
+      // Calendly-style calendar links for admin to preview/share
+      calendar: {
+        google: calendarLinks.google,
+        outlook: calendarLinks.outlook,
+        office365: calendarLinks.office365,
+        yahoo: calendarLinks.yahoo,
+        icsDownload: calendarLinks.icsDownload,
+      }
+    })
   } catch (error) {
     console.error('Tour update error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -387,13 +457,37 @@ async function sendTourConfirmation(
       
       console.log(`[Tour Confirmation] Generated email with subject: "${generatedEmail.subject}"`)
       
-      // Send via Resend
+      // Generate .ics calendar invite
+      const icsContent = generateTourICS({
+        propertyName: property.name || 'Property Tour',
+        propertyAddress: property.address?.street || property.address?.full,
+        tourDate: tour.tour_date,
+        tourTime: tour.tour_time,
+        tourType: tour.tour_type as 'in_person' | 'virtual' | 'self_guided',
+        durationMinutes: 30,
+        prospectName: `${lead.first_name} ${lead.last_name || ''}`.trim(),
+        prospectEmail: lead.email,
+        propertyEmail: property.contact_email || process.env.RESEND_FROM_EMAIL,
+        specialRequests: tour.notes
+      })
+      
+      const icsAttachment = getICSAttachment(icsContent)
+      const attachments: EmailAttachment[] = [{
+        filename: icsAttachment.filename,
+        content: icsAttachment.content,
+        contentType: icsAttachment.contentType
+      }]
+      
+      console.log(`[Tour Confirmation] Generated .ics calendar invite`)
+      
+      // Send via Resend with calendar attachment
       const emailResult = await sendEmail(
         lead.email,
         generatedEmail.subject,
         generatedEmail.textBody,
         undefined, // use default from email
-        generatedEmail.htmlBody
+        generatedEmail.htmlBody,
+        attachments
       )
 
       if (emailResult.success) {

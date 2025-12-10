@@ -131,19 +131,37 @@ export async function sendSMS(
   }
 }
 
+// Email attachment type
+export interface EmailAttachment {
+  filename: string
+  content: string // base64 encoded
+  contentType?: string
+}
+
 /**
  * Send Email via Resend
- * Supports both plain text and HTML emails
+ * Supports plain text, HTML, and attachments (including .ics calendar invites)
  */
 export async function sendEmail(
   to: string,
   subject: string,
   body: string,
   from?: string,
-  html?: string
+  html?: string,
+  attachments?: EmailAttachment[]
 ): Promise<MessageResult> {
   const client = getResendClient()
   const fromEmail = from || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
+  
+  // Validate inputs
+  if (!to || !subject || !body) {
+    console.error('[Email] Missing required fields:', { to: !!to, subject: !!subject, body: !!body })
+    return {
+      success: false,
+      error: 'Missing required fields: to, subject, or body',
+      channel: 'email',
+    }
+  }
   
   if (!client) {
     // Dev mode: log instead of sending
@@ -153,6 +171,10 @@ export async function sendEmail(
     console.log(`  Subject: ${subject}`)
     console.log(`  Body: ${body.substring(0, 200)}...`)
     console.log(`  Has HTML: ${!!html}`)
+    console.log(`  Attachments: ${attachments?.length || 0}`)
+    if (attachments?.length) {
+      attachments.forEach(a => console.log(`    - ${a.filename} (${a.contentType})`))
+    }
     
     return {
       success: true,
@@ -162,23 +184,52 @@ export async function sendEmail(
   }
   
   try {
+    console.log(`[Email] Attempting to send to ${to} from ${fromEmail}`)
+    console.log(`[Email] Subject: ${subject}`)
+    console.log(`[Email] Has HTML: ${!!html}`)
+    console.log(`[Email] Attachments: ${attachments?.length || 0}`)
+    
+    // Build Resend attachments format
+    const resendAttachments = attachments?.map(att => ({
+      filename: att.filename,
+      content: Buffer.from(att.content, 'base64'),
+      content_type: att.contentType
+    }))
+    
     const result = await client.emails.send({
       from: fromEmail,
       to,
       subject,
       text: body,
-      ...(html && { html }), // Include HTML if provided
+      ...(html && { html }),
+      ...(resendAttachments?.length && { attachments: resendAttachments }),
     })
     
-    console.log(`[Email] Sent to ${to}: ${result.data?.id}`)
+    console.log(`[Email] Resend API Response:`, JSON.stringify(result, null, 2))
+    
+    // Check if the result indicates an error
+    if (result.error) {
+      console.error('[Email] Resend API returned error:', result.error)
+      return {
+        success: false,
+        error: typeof result.error === 'string' ? result.error : JSON.stringify(result.error),
+        channel: 'email',
+      }
+    }
+    
+    const messageId = result.data?.id
+    console.log(`[Email] ✅ Successfully sent to ${to}, Message ID: ${messageId}`)
     
     return {
       success: true,
-      messageId: result.data?.id,
+      messageId,
       channel: 'email',
     }
   } catch (error) {
-    console.error('[Email] Error sending:', error)
+    console.error('[Email] ❌ Exception while sending:', error)
+    if (error instanceof Error) {
+      console.error('[Email] Error stack:', error.stack)
+    }
     
     return {
       success: false,

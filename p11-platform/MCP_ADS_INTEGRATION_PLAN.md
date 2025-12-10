@@ -2,26 +2,51 @@
 
 > **Purpose**: Enable LLM-driven read/write management of Google Ads and Meta Ads channels via Model Context Protocol (MCP) servers.
 >
-> **Reference**: [mcp-google-ads](https://github.com/cohnen/mcp-google-ads) | [MCP Documentation](https://modelcontextprotocol.io/)
+> **Strategy**: Build custom MCP servers with full Supabase integration, property-specific context, and audit logging
 >
-> **Created**: December 10, 2025
+> **References**: 
+> - [meta-ads-mcp](https://github.com/pipeboard-co/meta-ads-mcp) - Comprehensive Meta Ads MCP with 29 tools
+> - [mcp-google-ads](https://github.com/cohnen/mcp-google-ads) - Google Ads MCP reference
+> - [MCP Documentation](https://modelcontextprotocol.io/)
+>
+> **Created**: December 10, 2025  
+> **Updated**: December 10, 2025 - Full custom build strategy
+
+---
+
+## 🚀 Quick Start Guide
+
+### For the Impatient Developer
+
+**Want to start coding right now?**
+
+1. **Review the reference**: Browse [meta-ads-mcp](https://github.com/pipeboard-co/meta-ads-mcp) for architecture inspiration
+2. **Jump to Phase 1**: [Infrastructure Setup](#phase-1-infrastructure-setup) (copy-paste ready)
+3. **Get credentials**: Ensure Google Ads + Meta Ads tokens are in `.env.local`
+4. **Run commands**: Execute Phase 1 Task 1.1 directory creation, then Phase 1 Task 1.5 venv setup
+5. **Start coding**: Begin with Phase 2 Task 2.1 (Google Ads config)
+
+**Timeline**: 20-27 hours for full READ-only implementation (Phases 1-5)
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary](#executive-summary)
-2. [Current State](#current-state)
-3. [Target State](#target-state)
-4. [Risk Mitigation](#risk-mitigation)
-5. [Phase 1: Infrastructure Setup](#phase-1-infrastructure-setup)
-6. [Phase 2: Google Ads MCP Server (READ-only)](#phase-2-google-ads-mcp-server-read-only)
-7. [Phase 3: Meta Ads MCP Server (READ-only)](#phase-3-meta-ads-mcp-server-read-only)
-8. [Phase 4: Database & Audit Logging](#phase-4-database--audit-logging)
-9. [Phase 5: Cursor Integration](#phase-5-cursor-integration)
-10. [Phase 6: Write Operations (Future)](#phase-6-write-operations-future)
-11. [Testing Checklist](#testing-checklist)
-12. [Appendix: Code Templates](#appendix-code-templates)
+1. [Quick Start Guide](#-quick-start-guide)
+2. [Executive Summary](#executive-summary)
+3. [Current State](#current-state)
+4. [Target State](#target-state)
+5. [Risk Mitigation](#risk-mitigation)
+6. [Phase 1: Infrastructure Setup](#phase-1-infrastructure-setup)
+7. [Phase 2: Google Ads MCP Server (READ-only)](#phase-2-google-ads-mcp-server-read-only)
+8. [Phase 3: Meta Ads MCP Server (READ-only)](#phase-3-meta-ads-mcp-server-read-only)
+9. [Phase 4: Database & Audit Logging](#phase-4-database--audit-logging)
+10. [Phase 5: Cursor Integration](#phase-5-cursor-integration)
+11. [Phase 6: Write Operations (Future)](#phase-6-write-operations-future)
+12. [Phase 7: Property-Context Integration](#phase-7-property-context-integration)
+13. [Decision Matrix: Custom vs. Pre-built](#decision-matrix-custom-vs-pre-built)
+14. [Testing Checklist](#testing-checklist)
+15. [Appendix: Code Templates](#appendix-code-templates)
 
 ---
 
@@ -29,32 +54,56 @@
 
 ### What We're Building
 
-Two Python-based MCP servers that expose Google Ads and Meta Ads APIs as "tools" that Claude/Cursor can invoke via natural language:
+Two **custom Python-based MCP servers** that integrate deeply with your P11 Platform:
 
 ```
-User: "Show me the top 5 Google Ads campaigns by spend this month"
-Claude: [calls get_campaign_performance tool] → Returns formatted results
+User: "Show me Google Ads performance for Sunset Apartments this month"
+Claude: [calls get_property_ads_performance tool]
+        ↓ Looks up property_id from database
+        ↓ Fetches from Google Ads API  
+        ↓ Logs to mcp_audit_log table
+        ↓ Syncs to fact_marketing_performance
+        → Returns formatted results with budget alerts
 ```
+
+### Why Custom Build?
+
+**Inspired by [meta-ads-mcp](https://github.com/pipeboard-co/meta-ads-mcp)** (29 tools, production-ready), but extended for your needs:
+
+| Feature | Pre-built MCP | **Our Custom Build** |
+|---------|--------------|---------------------|
+| Basic API access | ✅ | ✅ |
+| **Supabase integration** | ❌ | ✅ Audit logs + data sync |
+| **Property context** | ❌ | ✅ "Sunset Apartments" vs account IDs |
+| **Multi-tenant aware** | ❌ | ✅ Org/property isolation |
+| **Custom formatting** | ❌ | ✅ Budget alerts, PM-friendly output |
+| **Database syncing** | ❌ | ✅ Auto-sync to fact_marketing_performance |
 
 ### Key Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Implementation approach | **Isolated new code** | Zero risk to existing pipelines |
+| Implementation approach | **Custom build for both** | Deep P11 integration required |
 | Initial scope | **READ-only first** | Avoid accidental financial impact |
+| Architecture reference | **meta-ads-mcp structure** | Battle-tested, 29-tool template |
 | Credential strategy | **Shared env vars** | Simpler; can separate later |
 | Python environment | **Separate venvs** | Avoid dependency conflicts |
 
 ### Timeline Estimate
 
-| Phase | Duration | Priority |
-|-------|----------|----------|
-| Phase 1: Infrastructure | 2-3 hours | ⭐⭐⭐ |
-| Phase 2: Google Ads MCP | 3-4 hours | ⭐⭐⭐ |
-| Phase 3: Meta Ads MCP | 3-4 hours | ⭐⭐ |
-| Phase 4: Database | 1 hour | ⭐⭐ |
-| Phase 5: Cursor Config | 30 min | ⭐⭐⭐ |
-| Phase 6: Write Ops | Future | ⭐ |
+| Phase | Duration | Priority | Deliverable |
+|-------|----------|----------|-------------|
+| Phase 1: Infrastructure | 3-4 hours | ⭐⭐⭐ | Shared utils, venvs, directory structure |
+| Phase 2: Google Ads MCP (READ) | 6-8 hours | ⭐⭐⭐ | 6 read-only tools + Supabase integration |
+| Phase 3: Meta Ads MCP (READ) | 8-10 hours | ⭐⭐⭐ | 20+ read-only tools (inspired by meta-ads-mcp) |
+| Phase 4: Database & Audit | 2-3 hours | ⭐⭐⭐ | Migration, audit logging, data sync |
+| Phase 5: Cursor Integration | 1-2 hours | ⭐⭐⭐ | MCP config, testing, verification |
+| Phase 6: Write Operations | 12-16 hours | ⭐⭐ | CRUD ops with guardrails |
+| Phase 7: Property Context | 4-6 hours | ⭐⭐ | Property-aware tools, auto-lookup |
+
+**Total READ-only (Phases 1-5)**: 20-27 hours  
+**Total with WRITE (Phases 6)**: 32-43 hours  
+**Total with Property Context (Phase 7)**: 36-49 hours
 
 ---
 
@@ -161,14 +210,72 @@ class MetaAdsClient:
 
 #### Meta Ads Tools (Phase 3)
 
+**Inspired by [meta-ads-mcp's 29 tools](https://github.com/pipeboard-co/meta-ads-mcp)** - categorized for P11 Platform:
+
+**Account Management (5 tools)**
 | Tool | Type | Description |
 |------|------|-------------|
 | `list_ad_accounts` | READ | List accessible ad accounts |
+| `get_account_info` | READ | Account spending limits, status, currency |
+| `get_login_link` | READ | Get Meta authentication URL |
+| `search_accounts` | READ | Search across accounts by name |
+| `get_billing_events` | READ | Billing history and events |
+
+**Campaign Management (8 tools)**
+| Tool | Type | Description |
+|------|------|-------------|
+| `get_campaigns` | READ | List all campaigns |
 | `get_campaign_insights` | READ | Campaign performance metrics |
-| `get_adset_insights` | READ | Adset-level metrics |
+| `create_campaign` | WRITE | Create new campaign |
+| `update_campaign` | WRITE | Modify campaign settings |
+| `delete_campaign` | WRITE | Remove campaign |
+| `get_campaign_budget` | READ | Current budget allocation |
+| `create_budget_schedule` | WRITE | Schedule budget changes |
+| `search_campaigns` | READ | Search campaigns by criteria |
+
+**AdSet Management (6 tools)**
+| Tool | Type | Description |
+|------|------|-------------|
+| `get_adsets` | READ | List ad sets |
+| `get_adset_insights` | READ | Adset-level performance |
+| `create_adset` | WRITE | Create new ad set |
+| `update_adset` | WRITE | Modify targeting/budget/frequency caps |
+| `delete_adset` | WRITE | Remove ad set |
+| `search_adsets` | READ | Search ad sets |
+
+**Ad Management (7 tools)**
+| Tool | Type | Description |
+|------|------|-------------|
+| `get_ads` | READ | List ads |
 | `get_ad_insights` | READ | Ad creative performance |
+| `get_ad_image` | READ | Download and visualize ad image |
+| `create_ad` | WRITE | Create new ad |
+| `update_ad` | WRITE | Modify ad status/bid |
+| `delete_ad` | WRITE | Remove ad |
+| `upload_image` | WRITE | Upload ad creative image |
+
+**Targeting & Audiences (6 tools)**
+| Tool | Type | Description |
+|------|------|-------------|
 | `get_audiences` | READ | Custom/lookalike audiences |
-| `get_account_info` | READ | Account spending limits, status |
+| `search_interests` | READ | Find interest targeting options |
+| `get_interest_suggestions` | READ | Get related interests |
+| `validate_interests` | READ | Verify interest IDs/names |
+| `search_behaviors` | READ | Behavior targeting options |
+| `search_demographics` | READ | Demographic targeting criteria |
+| `search_geo_locations` | READ | Geographic targeting locations |
+
+**Insights & Analytics (2 tools)**
+| Tool | Type | Description |
+|------|------|-------------|
+| `get_insights` | READ | Universal insights (campaign/adset/ad/account) |
+| `get_insights_breakdown` | READ | Insights with age/gender/country breakdown |
+
+**Pages & Assets (2 tools)**
+| Tool | Type | Description |
+|------|------|-------------|
+| `get_pages` | READ | List Facebook/Instagram pages |
+| `search_pages` | READ | Search pages by name |
 
 ---
 
@@ -1204,7 +1311,22 @@ if __name__ == "__main__":
 
 ## Phase 3: Meta Ads MCP Server (READ-only)
 
-**Duration**: 3-4 hours
+**Duration**: 8-10 hours  
+**Architecture Reference**: [pipeboard-co/meta-ads-mcp](https://github.com/pipeboard-co/meta-ads-mcp)
+
+### Architecture Overview
+
+**Learning from meta-ads-mcp's structure:**
+- ✅ Token caching for OAuth persistence
+- ✅ Resource-based file serving for images
+- ✅ Comprehensive error handling
+- ✅ Generic search functionality
+- ✅ Breakdown support for insights
+
+**Our additions:**
+- ✅ Supabase integration for audit logging
+- ✅ Property-context aware tools
+- ✅ Auto-sync to fact_marketing_performance table
 
 ### Task 3.1: Create Config Module
 
@@ -1254,29 +1376,89 @@ def is_configured() -> bool:
 ```python
 """Meta Graph API client for ads management."""
 import httpx
-from typing import Any
+import json
+from typing import Any, Optional, Literal
+from pathlib import Path
 from .config import META_ACCESS_TOKEN, META_BASE_URL, META_AD_ACCOUNT_ID
 
+# Token cache location (inspired by meta-ads-mcp)
+TOKEN_CACHE = Path.home() / ".meta-ads-mcp" / "token_cache.json"
+
 class MetaAdsClient:
-    """Client for Meta Marketing API."""
+    """
+    Client for Meta Marketing API.
+    
+    Features:
+    - Token caching for OAuth persistence
+    - Automatic retry logic
+    - Rate limit handling
+    - Comprehensive error messages
+    """
     
     def __init__(self, access_token: str | None = None, account_id: str | None = None):
-        self.access_token = access_token or META_ACCESS_TOKEN
+        self.access_token = access_token or self._load_cached_token() or META_ACCESS_TOKEN
         self.account_id = account_id or META_AD_ACCOUNT_ID
         self.base_url = META_BASE_URL
         
         if not self.access_token:
-            raise ValueError("Meta access token not configured")
+            raise ValueError("Meta access token not configured. Run authentication setup.")
     
-    async def _get(self, endpoint: str, params: dict | None = None) -> dict[str, Any]:
-        """Make a GET request to the Graph API."""
+    def _load_cached_token(self) -> Optional[str]:
+        """Load cached OAuth token if available."""
+        if TOKEN_CACHE.exists():
+            try:
+                with open(TOKEN_CACHE) as f:
+                    data = json.load(f)
+                    return data.get("access_token")
+            except Exception:
+                return None
+        return None
+    
+    def _save_token(self, token: str):
+        """Cache OAuth token for future use."""
+        TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        with open(TOKEN_CACHE, "w") as f:
+            json.dump({"access_token": token}, f)
+    
+    async def _request(
+        self, 
+        method: Literal["GET", "POST", "DELETE"],
+        endpoint: str, 
+        params: dict | None = None,
+        json_data: dict | None = None
+    ) -> dict[str, Any]:
+        """Make a request to the Graph API with error handling."""
         params = params or {}
         params["access_token"] = self.access_token
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{self.base_url}{endpoint}", params=params)
-            response.raise_for_status()
-            return response.json()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                if method == "GET":
+                    response = await client.get(f"{self.base_url}{endpoint}", params=params)
+                elif method == "POST":
+                    response = await client.post(
+                        f"{self.base_url}{endpoint}", 
+                        params=params,
+                        json=json_data
+                    )
+                elif method == "DELETE":
+                    response = await client.delete(f"{self.base_url}{endpoint}", params=params)
+                
+                response.raise_for_status()
+                return response.json()
+                
+            except httpx.HTTPStatusError as e:
+                # Parse Meta's error response
+                try:
+                    error_data = e.response.json()
+                    error_msg = error_data.get("error", {}).get("message", str(e))
+                    raise Exception(f"Meta API Error: {error_msg}")
+                except:
+                    raise Exception(f"Meta API Error: {e}")
+    
+    async def _get(self, endpoint: str, params: dict | None = None) -> dict[str, Any]:
+        """Make a GET request to the Graph API."""
+        return await self._request("GET", endpoint, params)
     
     async def get_ad_accounts(self) -> list[dict[str, Any]]:
         """Get all ad accounts the user has access to."""
@@ -1403,6 +1585,180 @@ class MetaAdsClient:
             "limit": limit
         })
         return result.get("data", [])
+    
+    # ========== TARGETING TOOLS (Inspired by meta-ads-mcp) ==========
+    
+    async def search_interests(
+        self,
+        query: str,
+        account_id: str | None = None,
+        limit: int = 25
+    ) -> list[dict[str, Any]]:
+        """Search for interest targeting options."""
+        acct = account_id or self.account_id
+        result = await self._get("/search", {
+            "type": "adinterest",
+            "q": query,
+            "limit": limit
+        })
+        return result.get("data", [])
+    
+    async def get_interest_suggestions(
+        self,
+        interest_list: list[str],
+        account_id: str | None = None,
+        limit: int = 25
+    ) -> list[dict[str, Any]]:
+        """Get related interest suggestions."""
+        acct = account_id or self.account_id
+        result = await self._get(f"/act_{acct}/targetingsuggestions", {
+            "interest_list": json.dumps(interest_list),
+            "limit": limit
+        })
+        return result.get("data", [])
+    
+    async def validate_interests(
+        self,
+        interest_list: list[str] | None = None,
+        interest_fbid_list: list[str] | None = None,
+        account_id: str | None = None
+    ) -> dict[str, Any]:
+        """Validate interest names or IDs."""
+        acct = account_id or self.account_id
+        params = {}
+        if interest_list:
+            params["interest_list"] = json.dumps(interest_list)
+        if interest_fbid_list:
+            params["interest_fbid_list"] = json.dumps(interest_fbid_list)
+        
+        return await self._get(f"/act_{acct}/targetingvalidation", params)
+    
+    async def search_behaviors(
+        self,
+        account_id: str | None = None,
+        limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Get behavior targeting options."""
+        acct = account_id or self.account_id
+        result = await self._get(f"/act_{acct}/targetingbrowse", {
+            "type": "behaviors",
+            "limit": limit
+        })
+        return result.get("data", [])
+    
+    async def search_demographics(
+        self,
+        demographic_class: str = "demographics",
+        account_id: str | None = None,
+        limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """
+        Get demographic targeting options.
+        
+        Classes: demographics, life_events, industries, income, 
+                 family_statuses, user_device, user_os
+        """
+        acct = account_id or self.account_id
+        result = await self._get(f"/act_{acct}/targetingbrowse", {
+            "type": demographic_class,
+            "limit": limit
+        })
+        return result.get("data", [])
+    
+    async def search_geo_locations(
+        self,
+        query: str,
+        location_types: list[str] | None = None,
+        limit: int = 25
+    ) -> list[dict[str, Any]]:
+        """Search for geographic targeting locations."""
+        location_types = location_types or ["country", "region", "city"]
+        result = await self._get("/search", {
+            "type": "adgeolocation",
+            "location_types": json.dumps(location_types),
+            "q": query,
+            "limit": limit
+        })
+        return result.get("data", [])
+    
+    # ========== PAGES & ASSETS ==========
+    
+    async def get_pages(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Get Facebook/Instagram pages the user manages."""
+        result = await self._get("/me/accounts", {
+            "fields": "id,name,access_token,category,fan_count,instagram_business_account",
+            "limit": limit
+        })
+        return result.get("data", [])
+    
+    # ========== IMAGE HANDLING ==========
+    
+    async def upload_image(
+        self,
+        image_url: str | None = None,
+        image_path: str | None = None,
+        name: str | None = None,
+        account_id: str | None = None
+    ) -> dict[str, Any]:
+        """Upload an image for ad creative."""
+        acct = account_id or self.account_id
+        
+        if image_url:
+            params = {"access_token": self.access_token}
+            json_data = {"url": image_url, "name": name or "uploaded_image"}
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/act_{acct}/adimages",
+                    params=params,
+                    json=json_data
+                )
+                response.raise_for_status()
+                return response.json()
+        
+        elif image_path:
+            # File upload handling
+            with open(image_path, "rb") as f:
+                files = {"source": f}
+                params = {"access_token": self.access_token, "name": name or "uploaded_image"}
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/act_{acct}/adimages",
+                        params=params,
+                        files=files
+                    )
+                    response.raise_for_status()
+                    return response.json()
+        
+        raise ValueError("Either image_url or image_path must be provided")
+    
+    async def get_ad_image(self, ad_id: str) -> dict[str, Any]:
+        """Get ad creative image details."""
+        result = await self._get(f"/{ad_id}", {
+            "fields": "creative{image_url,image_hash,thumbnail_url}"
+        })
+        return result
+    
+    # ========== BUDGET SCHEDULING ==========
+    
+    async def create_budget_schedule(
+        self,
+        campaign_id: str,
+        budget_value: int,
+        budget_value_type: Literal["ABSOLUTE", "MULTIPLIER"],
+        time_start: int,
+        time_end: int
+    ) -> dict[str, Any]:
+        """Create a budget schedule for high-demand periods."""
+        json_data = {
+            "budget_value": budget_value,
+            "budget_value_type": budget_value_type,
+            "time_start": time_start,
+            "time_end": time_end
+        }
+        
+        return await self._request("POST", f"/{campaign_id}/adscheduling", json_data=json_data)
 ```
 
 ### Task 3.3: Create Main Server
@@ -1424,8 +1780,14 @@ server = Server("meta-ads-mcp")
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """List available Meta Ads tools."""
+    """
+    List available Meta Ads tools.
+    
+    Inspired by meta-ads-mcp's comprehensive 29-tool architecture.
+    Organized into categories for better discoverability.
+    """
     return [
+        # ========== ACCOUNT MANAGEMENT ==========
         Tool(
             name="list_meta_ad_accounts",
             description="List all Meta (Facebook/Instagram) ad accounts you have access to.",
@@ -1538,6 +1900,163 @@ async def list_tools() -> list[Tool]:
                 "required": []
             }
         ),
+        
+        # ========== TARGETING TOOLS ==========
+        Tool(
+            name="search_meta_interests",
+            description="Search for interest targeting options by keyword (e.g., 'baseball', 'cooking').",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search term"},
+                    "account_id": {"type": "string"},
+                    "limit": {"type": "integer", "default": 25}
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="get_meta_interest_suggestions",
+            description="Get related interest suggestions based on existing interests.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "interest_list": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of interest names (e.g., ['Basketball', 'Soccer'])"
+                    },
+                    "account_id": {"type": "string"},
+                    "limit": {"type": "integer", "default": 25}
+                },
+                "required": ["interest_list"]
+            }
+        ),
+        Tool(
+            name="validate_meta_interests",
+            description="Validate interest names or IDs for targeting accuracy.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "interest_list": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Interest names to validate"
+                    },
+                    "interest_fbid_list": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Interest IDs to validate"
+                    },
+                    "account_id": {"type": "string"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="search_meta_behaviors",
+            description="Get all available behavior targeting options.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "account_id": {"type": "string"},
+                    "limit": {"type": "integer", "default": 50}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="search_meta_demographics",
+            description="Get demographic targeting options (demographics, life_events, industries, income, etc.).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "demographic_class": {
+                        "type": "string",
+                        "description": "Type: demographics, life_events, industries, income, family_statuses",
+                        "default": "demographics"
+                    },
+                    "account_id": {"type": "string"},
+                    "limit": {"type": "integer", "default": 50}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="search_meta_geo_locations",
+            description="Search for geographic targeting locations (countries, regions, cities, etc.).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Location search term"},
+                    "location_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Types: country, region, city, zip, geo_market",
+                        "default": ["country", "region", "city"]
+                    },
+                    "limit": {"type": "integer", "default": 25}
+                },
+                "required": ["query"]
+            }
+        ),
+        
+        # ========== PAGES & ASSETS ==========
+        Tool(
+            name="get_meta_pages",
+            description="Get Facebook/Instagram pages you manage.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "default": 50}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="upload_meta_ad_image",
+            description="Upload an image for ad creative use.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_url": {"type": "string", "description": "URL of image to upload"},
+                    "image_path": {"type": "string", "description": "Local file path"},
+                    "name": {"type": "string", "description": "Optional image name"},
+                    "account_id": {"type": "string"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_meta_ad_image",
+            description="Get ad creative image details and URLs.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ad_id": {"type": "string", "description": "Meta Ads ad ID"}
+                },
+                "required": ["ad_id"]
+            }
+        ),
+        Tool(
+            name="create_meta_budget_schedule",
+            description="Schedule budget changes for high-demand periods.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "campaign_id": {"type": "string"},
+                    "budget_value": {"type": "integer", "description": "Budget amount in cents"},
+                    "budget_value_type": {
+                        "type": "string",
+                        "description": "ABSOLUTE or MULTIPLIER",
+                        "default": "ABSOLUTE"
+                    },
+                    "time_start": {"type": "integer", "description": "Unix timestamp"},
+                    "time_end": {"type": "integer", "description": "Unix timestamp"}
+                },
+                "required": ["campaign_id", "budget_value", "time_start", "time_end"]
+            }
+        ),
     ]
 
 @server.call_tool()
@@ -1640,6 +2159,128 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 limit=arguments.get("limit", 50)
             )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        
+        # ========== TARGETING TOOLS ==========
+        
+        elif name == "search_meta_interests":
+            result = await client.search_interests(
+                query=arguments["query"],
+                account_id=account_id,
+                limit=arguments.get("limit", 25)
+            )
+            
+            if not result:
+                return [TextContent(type="text", text="No interests found.")]
+            
+            output = f"🎯 **Interest Targeting Options** (query: '{arguments['query']}')\n\n"
+            for interest in result[:10]:
+                output += f"• **{interest.get('name')}**\n"
+                output += f"  ID: {interest.get('id')} | "
+                output += f"Audience: ~{interest.get('audience_size', 0):,}\n"
+                if interest.get('path'):
+                    output += f"  Path: {' > '.join(interest['path'])}\n"
+                output += "\n"
+            
+            return [TextContent(type="text", text=output)]
+        
+        elif name == "get_meta_interest_suggestions":
+            result = await client.get_interest_suggestions(
+                interest_list=arguments["interest_list"],
+                account_id=account_id,
+                limit=arguments.get("limit", 25)
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        
+        elif name == "validate_meta_interests":
+            result = await client.validate_interests(
+                interest_list=arguments.get("interest_list"),
+                interest_fbid_list=arguments.get("interest_fbid_list"),
+                account_id=account_id
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        
+        elif name == "search_meta_behaviors":
+            result = await client.search_behaviors(
+                account_id=account_id,
+                limit=arguments.get("limit", 50)
+            )
+            
+            output = "🎭 **Behavior Targeting Options**\n\n"
+            for behavior in result[:15]:
+                output += f"• **{behavior.get('name')}**\n"
+                output += f"  ID: {behavior.get('id')}\n"
+                if behavior.get('description'):
+                    output += f"  {behavior['description']}\n"
+                output += "\n"
+            
+            return [TextContent(type="text", text=output)]
+        
+        elif name == "search_meta_demographics":
+            result = await client.search_demographics(
+                demographic_class=arguments.get("demographic_class", "demographics"),
+                account_id=account_id,
+                limit=arguments.get("limit", 50)
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        
+        elif name == "search_meta_geo_locations":
+            result = await client.search_geo_locations(
+                query=arguments["query"],
+                location_types=arguments.get("location_types", ["country", "region", "city"]),
+                limit=arguments.get("limit", 25)
+            )
+            
+            output = f"📍 **Geographic Locations** (query: '{arguments['query']}')\n\n"
+            for loc in result[:15]:
+                output += f"• **{loc.get('name')}**\n"
+                output += f"  Type: {loc.get('type')} | Key: {loc.get('key')}\n"
+                if loc.get('country_name'):
+                    output += f"  Country: {loc['country_name']}\n"
+                output += "\n"
+            
+            return [TextContent(type="text", text=output)]
+        
+        # ========== PAGES & ASSETS ==========
+        
+        elif name == "get_meta_pages":
+            result = await client.get_pages(limit=arguments.get("limit", 50))
+            
+            if not result:
+                return [TextContent(type="text", text="No pages found.")]
+            
+            output = "📄 **Facebook/Instagram Pages**\n\n"
+            for page in result:
+                output += f"• **{page.get('name')}**\n"
+                output += f"  ID: {page.get('id')} | Category: {page.get('category', 'N/A')}\n"
+                output += f"  Fans: {page.get('fan_count', 0):,}\n"
+                if page.get('instagram_business_account'):
+                    output += f"  ✅ Instagram Connected\n"
+                output += "\n"
+            
+            return [TextContent(type="text", text=output)]
+        
+        elif name == "upload_meta_ad_image":
+            result = await client.upload_image(
+                image_url=arguments.get("image_url"),
+                image_path=arguments.get("image_path"),
+                name=arguments.get("name"),
+                account_id=account_id
+            )
+            return [TextContent(type="text", text=f"✅ Image uploaded: {json.dumps(result, indent=2)}")]
+        
+        elif name == "get_meta_ad_image":
+            result = await client.get_ad_image(ad_id=arguments["ad_id"])
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        
+        elif name == "create_meta_budget_schedule":
+            result = await client.create_budget_schedule(
+                campaign_id=arguments["campaign_id"],
+                budget_value=arguments["budget_value"],
+                budget_value_type=arguments.get("budget_value_type", "ABSOLUTE"),
+                time_start=arguments["time_start"],
+                time_end=arguments["time_end"]
+            )
+            return [TextContent(type="text", text=f"✅ Budget schedule created: {json.dumps(result, indent=2)}")]
         
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
@@ -1798,6 +2439,8 @@ You should see Claude invoke the `list_google_ads_accounts` tool and return resu
 
 > ⚠️ **NOT IMPLEMENTED IN INITIAL RELEASE** - Add these ONLY after thoroughly testing read operations.
 
+**Duration**: 12-16 hours
+
 ### Future Write Tools - Google Ads
 
 | Tool | Risk Level | Guardrails Required |
@@ -1869,6 +2512,292 @@ To confirm, call with `confirm=True`
 
 ---
 
+## Phase 7: Property-Context Integration
+
+**Duration**: 4-6 hours  
+**Priority**: ⭐⭐ (Can be added after basic functionality works)
+
+### What This Adds
+
+Transform from account-ID-based to **property-aware** operations:
+
+```python
+# Before (generic):
+get_campaign_performance(customer_id="163-050-5086")
+
+# After (property-aware):
+get_property_ads_performance(property_name="Sunset Apartments")
+# ↓ Automatically looks up the right account
+```
+
+### Task 7.1: Create Property Lookup Service
+
+**File**: `services/mcp-servers/shared/property_service.py`
+
+```python
+"""Property-context service for MCP tools."""
+from typing import Optional
+from .supabase_client import get_supabase
+
+async def get_property_by_name(property_name: str) -> Optional[dict]:
+    """Look up property by name."""
+    supabase = get_supabase()
+    result = supabase.table('properties')\
+        .select('id, name, org_id')\
+        .ilike('name', f'%{property_name}%')\
+        .limit(1)\
+        .execute()
+    
+    return result.data[0] if result.data else None
+
+async def get_ad_account_for_property(
+    property_id: str,
+    platform: str  # 'google_ads' or 'meta_ads'
+) -> Optional[str]:
+    """Get the ad account ID linked to a property."""
+    supabase = get_supabase()
+    
+    field_map = {
+        'google_ads': 'google_ads_customer_id',
+        'meta_ads': 'meta_ad_account_id'
+    }
+    
+    result = supabase.table('ad_account_connections')\
+        .select(field_map[platform])\
+        .eq('property_id', property_id)\
+        .limit(1)\
+        .execute()
+    
+    if result.data:
+        return result.data[0].get(field_map[platform])
+    return None
+
+async def get_properties_for_org(org_id: str) -> list[dict]:
+    """Get all properties in an organization."""
+    supabase = get_supabase()
+    result = supabase.table('properties')\
+        .select('id, name')\
+        .eq('org_id', org_id)\
+        .execute()
+    
+    return result.data or []
+
+async def resolve_property_to_ad_account(
+    property_identifier: str,  # Can be name or ID
+    platform: str
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    Resolve a property name/ID to an ad account ID.
+    
+    Returns: (property_id, ad_account_id)
+    """
+    # Try as UUID first
+    if len(property_identifier) == 36 and '-' in property_identifier:
+        property_id = property_identifier
+    else:
+        # Look up by name
+        prop = await get_property_by_name(property_identifier)
+        if not prop:
+            return None, None
+        property_id = prop['id']
+    
+    # Get ad account
+    ad_account_id = await get_ad_account_for_property(property_id, platform)
+    
+    return property_id, ad_account_id
+```
+
+### Task 7.2: Add Property-Aware Tools to Google Ads MCP
+
+**File**: `services/mcp-servers/google-ads/tools/property_context.py`
+
+```python
+"""Property-context aware wrappers for Google Ads tools."""
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+from shared.property_service import resolve_property_to_ad_account
+from .performance import get_campaign_performance, get_ad_performance
+
+async def get_property_campaign_performance(
+    property_identifier: str,
+    date_range: str = "LAST_30_DAYS",
+    limit: int = 20
+):
+    """
+    Get Google Ads campaign performance for a specific property.
+    
+    Args:
+        property_identifier: Property name (e.g., "Sunset Apartments") or ID
+        date_range: Date range preset
+        limit: Max campaigns to return
+    """
+    # Resolve property to ad account
+    property_id, customer_id = await resolve_property_to_ad_account(
+        property_identifier,
+        platform="google_ads"
+    )
+    
+    if not customer_id:
+        return {
+            "error": f"No Google Ads account found for property: {property_identifier}"
+        }
+    
+    # Fetch performance
+    campaigns = await get_campaign_performance(customer_id, date_range, limit)
+    
+    # Add property context to response
+    return {
+        "property_id": property_id,
+        "property_identifier": property_identifier,
+        "google_ads_customer_id": customer_id,
+        "date_range": date_range,
+        "campaigns": campaigns
+    }
+
+async def get_property_ad_performance(
+    property_identifier: str,
+    campaign_id: str | None = None,
+    date_range: str = "LAST_30_DAYS",
+    limit: int = 50
+):
+    """Get ad-level performance for a property's Google Ads account."""
+    property_id, customer_id = await resolve_property_to_ad_account(
+        property_identifier,
+        platform="google_ads"
+    )
+    
+    if not customer_id:
+        return {"error": f"No Google Ads account found for property: {property_identifier}"}
+    
+    ads = await get_ad_performance(customer_id, campaign_id, date_range, limit)
+    
+    return {
+        "property_id": property_id,
+        "property_identifier": property_identifier,
+        "google_ads_customer_id": customer_id,
+        "ads": ads
+    }
+```
+
+### Task 7.3: Register Property-Aware Tools in Server
+
+**Update**: `services/mcp-servers/google-ads/server.py`
+
+```python
+# Add to imports:
+from .tools.property_context import (
+    get_property_campaign_performance,
+    get_property_ad_performance
+)
+
+# Add to @server.list_tools():
+Tool(
+    name="get_google_ads_property_performance",
+    description="Get Google Ads campaign performance for a property by NAME (e.g., 'Sunset Apartments'). No need to remember account IDs!",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "property_identifier": {
+                "type": "string",
+                "description": "Property name or ID (e.g., 'Sunset Apartments')"
+            },
+            "date_range": {
+                "type": "string",
+                "description": "Date range preset",
+                "default": "LAST_30_DAYS"
+            },
+            "limit": {
+                "type": "integer",
+                "default": 20
+            }
+        },
+        "required": ["property_identifier"]
+    }
+),
+
+# Add to @server.call_tool():
+elif name == "get_google_ads_property_performance":
+    result = await get_property_campaign_performance(
+        property_identifier=arguments["property_identifier"],
+        date_range=arguments.get("date_range", "LAST_30_DAYS"),
+        limit=arguments.get("limit", 20)
+    )
+    
+    if result.get("error"):
+        return [TextContent(type="text", text=f"❌ {result['error']}")]
+    
+    output = f"🏢 **{arguments['property_identifier']} - Google Ads Performance**\n\n"
+    output += f"📅 Period: {result['date_range']}\n"
+    output += f"🔗 Account: {result['google_ads_customer_id']}\n\n"
+    
+    for i, camp in enumerate(result['campaigns'], 1):
+        output += f"{i}. **{camp['name']}**\n"
+        output += f"   💰 Spend: {camp['spend_formatted']} | "
+        output += f"Clicks: {camp['clicks']:,} | Conv: {camp['conversions']:.1f}\n\n"
+    
+    return [TextContent(type="text", text=output)]
+```
+
+### Task 7.4: Add Property-Aware Tools to Meta Ads MCP
+
+**Repeat similar pattern** for Meta Ads server with property-context wrappers.
+
+### Task 7.5: Update Database Schema (Optional)
+
+**Add if not exists**: Ensure `ad_account_connections` table exists:
+
+```sql
+-- Migration: 20251211010000_ad_account_connections.sql
+CREATE TABLE IF NOT EXISTS ad_account_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    property_id UUID REFERENCES properties(id) ON DELETE CASCADE,
+    google_ads_customer_id TEXT,
+    meta_ad_account_id TEXT,
+    google_ads_refresh_token TEXT,  -- Property-specific tokens
+    meta_access_token TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(property_id, google_ads_customer_id),
+    UNIQUE(property_id, meta_ad_account_id)
+);
+
+CREATE INDEX idx_ad_connections_property ON ad_account_connections(property_id);
+CREATE INDEX idx_ad_connections_google ON ad_account_connections(google_ads_customer_id);
+CREATE INDEX idx_ad_connections_meta ON ad_account_connections(meta_ad_account_id);
+
+-- RLS Policy
+ALTER TABLE ad_account_connections ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view org ad connections" ON ad_account_connections
+FOR SELECT USING (
+    EXISTS (
+        SELECT 1 FROM profiles p
+        JOIN properties prop ON prop.org_id = p.org_id
+        WHERE p.id = auth.uid()
+        AND prop.id = ad_account_connections.property_id
+    )
+);
+```
+
+### Benefits After Phase 7
+
+**User Experience Transformation:**
+
+```
+❌ Before: "Show Google Ads for account 163-050-5086"
+✅ After:  "Show Google Ads for Sunset Apartments"
+
+❌ Before: Claude doesn't know which property you're asking about
+✅ After:  Claude automatically resolves property → ad account
+
+❌ Before: No connection between CRM data and ads data
+✅ After:  Full integration with property management system
+```
+
+---
+
 ## Testing Checklist
 
 ### Phase 1 Tests
@@ -1894,6 +2823,110 @@ To confirm, call with `confirm=True`
 - [ ] Natural language queries invoke correct tools
 - [ ] Results are formatted readably
 - [ ] Errors are displayed clearly
+
+### Phase 6 Tests (Write Operations)
+- [ ] Write operations require confirmation
+- [ ] Guardrails prevent excessive budget changes
+- [ ] All write operations are logged to audit table
+- [ ] Failed writes don't corrupt campaigns
+
+### Phase 7 Tests (Property Context)
+- [ ] Property name lookup works correctly
+- [ ] Property → ad account resolution is accurate
+- [ ] Property-aware tools return correct data
+- [ ] Multi-tenant isolation is enforced
+- [ ] Org-level aggregation works across properties
+
+---
+
+## Decision Matrix: Custom vs. Pre-built
+
+### Quick Reference
+
+| Need | Use Pre-built | Build Custom |
+|------|---------------|--------------|
+| **Just want ads data in Claude** | ✅ | ❌ |
+| **Single account, no multi-tenancy** | ✅ | ❌ |
+| **Need property-specific context** | ❌ | ✅ |
+| **Must have audit logging** | ❌ | ✅ |
+| **Multi-tenant platform** | ❌ | ✅ |
+| **Auto-sync to database** | ❌ | ✅ |
+| **Custom business rules** | ❌ | ✅ |
+| **Budget/compliance guardrails** | ❌ | ✅ |
+
+### What You Get with Custom Build
+
+**Layer 1: Basic API Access** (Same as pre-built)
+- Read/write to Google Ads & Meta Ads APIs
+- Natural language queries via Claude
+- Standard reporting and insights
+
+**Layer 2: P11 Platform Integration** (Custom only)
+- ✅ Audit logging to `mcp_audit_log` table
+- ✅ Data sync to `fact_marketing_performance`
+- ✅ Property-aware operations
+- ✅ Multi-tenant isolation
+- ✅ Custom formatting for property managers
+
+**Layer 3: Business Logic** (Custom only)
+- ✅ Budget guardrails tied to property budgets
+- ✅ Auto-alerts for overspend
+- ✅ Org-level aggregated reporting
+- ✅ Role-based operation permissions
+
+### Our Recommendation
+
+**Start with**: Custom build for Meta Ads + Google's official MCP for Google Ads
+
+**Then migrate to**: Full custom when you need:
+- Property-context awareness
+- Audit logging requirements
+- Database integration
+- Custom business rules
+
+---
+
+## Reference Comparison
+
+### What We're Building vs. Existing Solutions
+
+| Feature | meta-ads-mcp | Google Official MCP | **Our Custom Build** |
+|---------|--------------|---------------------|----------------------|
+| **Platform** | Meta Ads | Google Ads | Both |
+| **Tools Count** | 29 | ~8-12 | 40+ (combined) |
+| **Language** | Python | Node.js/Python | Python |
+| **Supabase Integration** | ❌ | ❌ | ✅ |
+| **Audit Logging** | ❌ | ❌ | ✅ To database |
+| **Property Context** | ❌ | ❌ | ✅ Multi-tenant aware |
+| **Token Caching** | ✅ | ✅ | ✅ (borrowed pattern) |
+| **Image Resources** | ✅ | ❌ | ✅ (borrowed pattern) |
+| **Targeting Search** | ✅ | ❌ | ✅ (borrowed pattern) |
+| **Write Operations** | ✅ | ✅ | ✅ (Phase 6) |
+| **Budget Scheduling** | ✅ | ❌ | ✅ (borrowed) |
+| **Generic Search** | ✅ | ❌ | ✅ (borrowed) |
+| **Database Sync** | ❌ | ❌ | ✅ Auto-sync to fact table |
+| **Custom Formatting** | Basic | Basic | ✅ PM-friendly |
+| **Business Rules** | ❌ | ❌ | ✅ Guardrails |
+| **Maintenance** | Community | Google | Your team |
+| **Customization** | Fork required | Limited | Full control |
+
+### Code Patterns We're Borrowing from meta-ads-mcp
+
+1. ✅ **Token caching architecture**
+2. ✅ **Comprehensive targeting tools** (interests, behaviors, demographics, geo)
+3. ✅ **Image upload and resource serving**
+4. ✅ **Budget scheduling functionality**
+5. ✅ **Generic search across entities**
+6. ✅ **Error handling patterns**
+
+### What We're Adding Beyond Reference Implementations
+
+1. ✅ **Supabase integration** - Full database connectivity
+2. ✅ **Property-specific context** - Multi-tenant property management
+3. ✅ **Audit logging** - Compliance-ready operation logs
+4. ✅ **Data synchronization** - Auto-sync to `fact_marketing_performance`
+5. ✅ **Custom business logic** - Budget guardrails, alerts, approvals
+6. ✅ **Unified architecture** - Both platforms in one consistent design
 
 ---
 
@@ -1962,15 +2995,139 @@ if __name__ == "__main__":
 
 ## Notes & Reminders
 
-1. **Meta Ads requires access token** - You'll need to set up OAuth or get a long-lived token from the Meta Business Suite.
+### Critical Setup Requirements
 
-2. **Google Ads developer token** - Your current token may be in test mode. Production mode required for full access.
+1. **Meta Ads OAuth** - Inspired by [meta-ads-mcp](https://github.com/pipeboard-co/meta-ads-mcp):
+   - Implement token caching at `~/.meta-ads-mcp/token_cache.json`
+   - Use long-lived tokens (60-90 days) or OAuth refresh
+   - Store tokens per-property in `ad_account_connections` table
 
-3. **Rate limits** - Google Ads: ~15,000 operations/day. Meta: Varies by endpoint. Implement caching if heavy usage expected.
+2. **Google Ads Developer Token**:
+   - ✅ You have: `163-050-5086` (MCC ID)
+   - ⚠️ Verify: Production mode vs. Test mode
+   - Production mode needed for full access
 
-4. **Existing pipelines unaffected** - This implementation is fully isolated. Your current ETL jobs continue working.
+3. **Rate Limits**:
+   - Google Ads: ~15,000 operations/day
+   - Meta: 200 calls/hour per user (default tier)
+   - Implement caching for frequently-accessed data (account lists, campaigns)
+
+4. **MCP Package Version**:
+   - Check actual version: `pip search mcp` or visit PyPI
+   - May need to adjust from `mcp>=1.0.0` to actual available version
+
+5. **Cursor MCP Config Location**:
+   - Windows: `%APPDATA%\Cursor\User\globalStorage\mcp.json`
+   - Mac: `~/Library/Application Support/Cursor/User/globalStorage/mcp.json`
+   - Linux: `~/.config/Cursor/User/globalStorage/mcp.json`
+
+### Architecture Decisions
+
+✅ **What We're Doing:**
+- Isolated new code in `services/mcp-servers/`
+- Separate virtual environments
+- Shared utilities for Supabase/audit
+- Property-context layer (Phase 7)
+
+❌ **What We're NOT Changing:**
+- Existing `pipelines/google_ads.py` (ETL continues unchanged)
+- Existing `pipelines/meta_ads.py` (ETL continues unchanged)
+- Web app API routes
+- Scheduled pipeline jobs
+
+### Implementation Strategy
+
+**Recommended Path:**
+
+```
+Week 1: Foundation
+├─ Phase 1: Infrastructure (3-4 hours)
+├─ Phase 2: Google Ads READ-only (6-8 hours)
+└─ Phase 5: Cursor Integration (1-2 hours)
+   → Milestone: Can query Google Ads via Claude
+
+Week 2: Meta Ads
+├─ Phase 3: Meta Ads READ-only (8-10 hours)
+├─ Phase 4: Database & Audit (2-3 hours)
+└─ Testing & refinement
+   → Milestone: Full READ access to both platforms
+
+Week 3+: Advanced Features
+├─ Phase 7: Property Context (4-6 hours)
+├─ Phase 6: Write Operations (12-16 hours)
+└─ Custom business logic
+   → Milestone: Production-ready with guardrails
+```
+
+### Learning from meta-ads-mcp
+
+**Key Patterns to Adopt:**
+
+1. **Token Caching**:
+   ```python
+   TOKEN_CACHE = Path.home() / ".meta-ads-mcp" / "token_cache.json"
+   ```
+
+2. **Resource Serving** (for images):
+   ```python
+   @server.list_resources()
+   async def list_resources() -> list[Resource]:
+       # Serve ad images as MCP resources
+   ```
+
+3. **Generic Search**:
+   ```python
+   def search_all(query: str):
+       # Search across accounts, campaigns, ads, pages
+   ```
+
+4. **Comprehensive Error Handling**:
+   ```python
+   try:
+       response.raise_for_status()
+   except httpx.HTTPStatusError as e:
+       error_msg = e.response.json().get("error", {}).get("message")
+   ```
+
+### Security Considerations
+
+1. **Token Storage**:
+   - ❌ Don't hardcode in mcp.json
+   - ✅ Use environment variables
+   - ✅ Store per-property tokens in database (encrypted)
+
+2. **Audit Logging**:
+   - Log ALL operations (READ and WRITE)
+   - Include user context when available
+   - Retention policy: 90 days
+
+3. **RLS Policies**:
+   - Ensure org-level isolation
+   - Property-level permissions
+   - Audit log access restricted to admins
 
 ---
 
-**Ready to implement!** Start with Phase 1 and work through sequentially.
+## Final Checklist Before Starting
+
+- [ ] Review meta-ads-mcp architecture: https://github.com/pipeboard-co/meta-ads-mcp
+- [ ] Verify Google Ads credentials in `.env.local`
+- [ ] Set up Meta Business Manager access
+- [ ] Generate Meta long-lived token
+- [ ] Confirm Supabase connection works
+- [ ] Check MCP Python package version
+- [ ] Locate Cursor MCP config file
+- [ ] Back up existing pipeline code
+- [ ] Create git branch: `feature/mcp-ads-integration`
+
+---
+
+**Ready to implement!** 
+
+**Decision Required**: Do you want to proceed with:
+1. **Full custom build** (Phases 1-7, ~36-49 hours total)
+2. **Hybrid approach** (Use Google's official MCP + custom Meta, ~15-25 hours)
+3. **Phased rollout** (Start with READ-only custom for both, defer Phase 6-7)
+
+**Recommended**: Option 3 - Build custom READ-only for both platforms (Phases 1-5), validate it works, then add write operations and property context.
 
