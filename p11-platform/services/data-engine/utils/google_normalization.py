@@ -29,3 +29,6 @@ def normalize_google_data(raw_data: List[Dict[str, Any]]) -> pd.DataFrame:
     return normalized
 
 
+
+
+

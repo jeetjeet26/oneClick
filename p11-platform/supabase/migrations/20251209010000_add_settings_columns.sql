@@ -48,3 +48,6 @@ COMMENT ON COLUMN public.organizations.settings IS 'Organization-wide settings s
 COMMENT ON COLUMN public.profiles.preferences IS 'User preferences stored as JSONB';
 
 
+
+
+

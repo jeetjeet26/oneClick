@@ -57,22 +57,26 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams
     const propertyId = searchParams.get('propertyId')
     const analysisType = searchParams.get('type') || 'summary'
-    const unitType = searchParams.get('unitType') // For filtering specific unit types
+    const unitType = searchParams.get('unitType') // For filtering specific unit types (deprecated, use bedrooms)
+    const bedrooms = searchParams.get('bedrooms') // For filtering by bedroom count
     const days = parseInt(searchParams.get('days') || '30') // For trend analysis
 
     if (!propertyId) {
       return NextResponse.json({ error: 'propertyId required' }, { status: 400 })
     }
 
+    // Use bedrooms filter if provided, otherwise fall back to unitType for backward compatibility
+    const filter = bedrooms || unitType
+
     switch (analysisType) {
       case 'summary':
         return await getMarketSummary(supabase, propertyId)
       case 'comparison':
-        return await getCompetitorComparison(supabase, propertyId, unitType)
+        return await getCompetitorComparison(supabase, propertyId, filter, bedrooms !== null)
       case 'trends':
-        return await getPriceTrends(supabase, propertyId, unitType, days)
+        return await getPriceTrends(supabase, propertyId, filter, bedrooms !== null, days)
       case 'position':
-        return await getMarketPosition(supabase, propertyId, unitType)
+        return await getMarketPosition(supabase, propertyId, filter, bedrooms !== null)
       default:
         return NextResponse.json({ error: 'Invalid analysis type' }, { status: 400 })
     }
@@ -174,7 +178,8 @@ async function getMarketSummary(supabase: Awaited<ReturnType<typeof createClient
 async function getCompetitorComparison(
   supabase: Awaited<ReturnType<typeof createClient>>, 
   propertyId: string,
-  unitType: string | null
+  filter: string | null,
+  isBedrooms: boolean
 ) {
   // Get all competitors with their units
   const { data: competitors } = await supabase
@@ -192,9 +197,14 @@ async function getCompetitorComparison(
   const comparisons: CompetitorComparison[] = (competitors || []).map(comp => {
     let units = comp.units || []
     
-    // Filter by unit type if specified
-    if (unitType) {
-      units = units.filter((u: Record<string, unknown>) => u.unit_type === unitType)
+    // Filter by bedrooms or unit type if specified
+    if (filter) {
+      if (isBedrooms) {
+        const bedroomCount = parseInt(filter)
+        units = units.filter((u: Record<string, unknown>) => u.bedrooms === bedroomCount)
+      } else {
+        units = units.filter((u: Record<string, unknown>) => u.unit_type === filter)
+      }
     }
 
     // Calculate averages
@@ -245,7 +255,8 @@ async function getCompetitorComparison(
 async function getPriceTrends(
   supabase: Awaited<ReturnType<typeof createClient>>, 
   propertyId: string,
-  unitType: string | null,
+  filter: string | null,
+  isBedrooms: boolean,
   days: number
 ) {
   const startDate = new Date()
@@ -264,14 +275,19 @@ async function getPriceTrends(
     return NextResponse.json({ trends: [] })
   }
 
-  // Get unit IDs, optionally filtered by unit type
+  // Get unit IDs, optionally filtered by bedrooms or unit type
   let unitsQuery = supabase
     .from('competitor_units')
     .select('id')
     .in('competitor_id', competitorIds)
 
-  if (unitType) {
-    unitsQuery = unitsQuery.eq('unit_type', unitType)
+  if (filter) {
+    if (isBedrooms) {
+      const bedroomCount = parseInt(filter)
+      unitsQuery = unitsQuery.eq('bedrooms', bedroomCount)
+    } else {
+      unitsQuery = unitsQuery.eq('unit_type', filter)
+    }
   }
 
   const { data: units } = await unitsQuery
@@ -325,7 +341,8 @@ async function getPriceTrends(
 async function getMarketPosition(
   supabase: Awaited<ReturnType<typeof createClient>>, 
   propertyId: string,
-  unitType: string | null
+  filter: string | null,
+  isBedrooms: boolean
 ) {
   // Get all competitors with units
   const { data: competitors } = await supabase
@@ -351,7 +368,18 @@ async function getMarketPosition(
   competitors?.forEach(comp => {
     (comp.units || []).forEach((u: Record<string, unknown>) => {
       if (u.rent_min) {
-        if (!unitType || u.unit_type === unitType) {
+        // Apply filter based on type
+        let matchesFilter = true
+        if (filter) {
+          if (isBedrooms) {
+            const bedroomCount = parseInt(filter)
+            matchesFilter = u.bedrooms === bedroomCount
+          } else {
+            matchesFilter = u.unit_type === filter
+          }
+        }
+        
+        if (matchesFilter) {
           allUnits.push({
             competitor: comp.name,
             unitType: u.unit_type as string,

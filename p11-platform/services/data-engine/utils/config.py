@@ -13,15 +13,15 @@ ROOT_ENV = ROOT_DIR / ".env"
 
 if ROOT_ENV.exists():
     load_dotenv(ROOT_ENV)
-    print(f"✓ Loaded environment from {ROOT_ENV}")
+    print(f"[OK] Loaded environment from {ROOT_ENV}")
 else:
     # Fallback: try local .env in data-engine folder
     LOCAL_ENV = Path(__file__).resolve().parents[1] / ".env"
     if LOCAL_ENV.exists():
         load_dotenv(LOCAL_ENV)
-        print(f"✓ Loaded environment from {LOCAL_ENV}")
+        print(f"[OK] Loaded environment from {LOCAL_ENV}")
     else:
-        print("⚠ No .env file found. Using system environment variables.")
+        print("[WARN] No .env file found. Using system environment variables.")
 
 # Export commonly used config values
 SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL")

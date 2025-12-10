@@ -534,23 +534,41 @@ export function CompetitorDetailDrawer({
         </div>
 
         {/* Amenities */}
-        {competitor.amenities.length > 0 && (
-          <div className="p-4 border-b border-gray-100 dark:border-gray-700">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-500" />
               Amenities
             </h3>
-            <div className="flex flex-wrap gap-2">
+            {competitor.amenities.length > 0 && (
+              <span className="text-xs text-gray-500">
+                {competitor.amenities.length} amenities
+              </span>
+            )}
+          </div>
+          {competitor.amenities.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
               {competitor.amenities.map((amenity, i) => (
                 <span
                   key={i}
-                  className="px-2.5 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full"
+                  className="px-2.5 py-1 text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-full"
                 >
                   {amenity}
                 </span>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="py-4 text-center">
+              <p className="text-sm text-gray-400">No amenities recorded</p>
+              <button
+                onClick={() => onEdit(competitor)}
+                className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                Add amenities →
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Apartments.com Refresh Section */}
         <div className="p-4 border-b border-gray-100 dark:border-gray-700">

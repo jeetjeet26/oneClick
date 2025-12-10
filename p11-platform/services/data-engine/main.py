@@ -832,6 +832,118 @@ async def discover_from_apartments_com(
     }
 
 
+class ApartmentsComBulkAddRequest(BaseModel):
+    """Bulk add apartments.com URLs to multiple competitors"""
+    listings: List[dict]  # List of {competitor_id: str, url: str}
+    auto_scrape: bool = True
+
+
+@app.post('/scrape/apartments-com/add-listings-bulk')
+async def bulk_add_apartments_com_listings(request: ApartmentsComBulkAddRequest):
+    """
+    Bulk add apartments.com listing URLs to multiple competitors.
+    
+    **RECOMMENDED WORKFLOW for finding competitor listings:**
+    
+    1. User manually searches apartments.com for each competitor
+    2. User copies the direct URLs
+    3. Use this endpoint to save URLs and scrape pricing in one call
+    
+    This is more reliable than auto-search because:
+    - Direct URLs always work (no name matching needed)
+    - No timeouts from large city searches
+    - User verifies correct match
+    
+    Args:
+        listings: Array of {competitor_id: string, url: string}
+        auto_scrape: Scrape pricing after saving URLs (default: true)
+    
+    Example request body:
+    ```json
+    {
+        "listings": [
+            {"competitor_id": "uuid-1", "url": "https://www.apartments.com/property-1/"},
+            {"competitor_id": "uuid-2", "url": "https://www.apartments.com/property-2/"}
+        ],
+        "auto_scrape": true
+    }
+    ```
+    """
+    from scrapers.coordinator import ScrapingCoordinator
+    
+    results = {
+        'success': True,
+        'total': len(request.listings),
+        'saved': 0,
+        'scraped': 0,
+        'failed': 0,
+        'details': []
+    }
+    
+    proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+    coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+    
+    for listing in request.listings:
+        competitor_id = listing.get('competitor_id')
+        url = listing.get('url')
+        
+        if not competitor_id or not url:
+            results['failed'] += 1
+            results['details'].append({
+                'competitor_id': competitor_id,
+                'success': False,
+                'error': 'Missing competitor_id or url'
+            })
+            continue
+        
+        if 'apartments.com' not in url:
+            results['failed'] += 1
+            results['details'].append({
+                'competitor_id': competitor_id,
+                'success': False,
+                'error': 'URL must be from apartments.com'
+            })
+            continue
+        
+        try:
+            result = coordinator.add_apartments_com_listing(
+                competitor_id=competitor_id,
+                apartments_com_url=url,
+                skip_scrape=not request.auto_scrape
+            )
+            
+            if result.get('success'):
+                results['saved'] += 1
+                if result.get('scraped'):
+                    results['scraped'] += 1
+                results['details'].append({
+                    'competitor_id': competitor_id,
+                    'competitor_name': result.get('competitor_name'),
+                    'success': True,
+                    'url_saved': True,
+                    'scraped': result.get('scraped', False),
+                    'units_scraped': result.get('units_scraped', 0)
+                })
+            else:
+                results['failed'] += 1
+                results['details'].append({
+                    'competitor_id': competitor_id,
+                    'success': False,
+                    'error': result.get('error', 'Unknown error')
+                })
+                
+        except Exception as e:
+            results['failed'] += 1
+            results['details'].append({
+                'competitor_id': competitor_id,
+                'success': False,
+                'error': str(e)
+            })
+    
+    results['message'] = f"Saved {results['saved']}/{results['total']} URLs, scraped {results['scraped']}"
+    return results
+
+
 @app.post('/scrape/apartments-com/add-listing')
 async def add_apartments_com_listing(request: ApartmentsComAddListingRequest):
     """
@@ -929,6 +1041,7 @@ class FindListingsRequest(BaseModel):
     auto_scrape: bool = True
     city: Optional[str] = None  # Override city for all competitors
     state: Optional[str] = None  # Override state for all competitors
+    search_strategy: str = "name"  # "name" (recommended) or "area"
 
 
 @app.post('/scrape/apartments-com/find-listings')
@@ -939,18 +1052,35 @@ async def find_apartments_com_listings(
     """
     Search apartments.com for existing competitors and link their listings.
     
+    Two search strategies available:
+    
+    **"name" (default, recommended):**
+    - Searches by each competitor's name + city
+    - Faster, more accurate, avoids timeouts
+    - Makes ~10 small searches instead of 1 large one
+    
+    **"area":**
+    - Searches entire city for all properties
+    - Slower, can timeout in large cities
+    - Better for discovering NEW properties
+    
     For each competitor without an apartments.com URL:
     1. Search apartments.com by name and city/state
     2. Match results using name similarity and address
     3. If confident match found, save the apartments.com URL
     4. Optionally auto-scrape pricing data
     
+    **NOTE:** For best results with specific competitors, use the manual URL 
+    upload flow via POST /scrape/apartments-com/add-listing with the direct 
+    apartments.com URL.
+    
     Args:
         property_id: Property UUID
         competitor_ids: Optional specific competitor IDs
         auto_scrape: Auto-scrape pricing after finding URLs (default: true)
-        city: Override city for search (uses this instead of parsing from addresses)
-        state: Override state for search
+        city: Override city for search
+        state: Override state for search  
+        search_strategy: "name" (recommended) or "area"
     """
     try:
         from scrapers.coordinator import ScrapingCoordinator
@@ -964,7 +1094,8 @@ async def find_apartments_com_listings(
             competitor_ids=request.competitor_ids,
             auto_scrape=request.auto_scrape,
             city_override=request.city,
-            state_override=request.state
+            state_override=request.state,
+            search_strategy=request.search_strategy
         )
         
         logger.info(f"Find listings complete: {result}")

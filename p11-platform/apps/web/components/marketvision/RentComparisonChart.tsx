@@ -56,14 +56,14 @@ export function RentComparisonChart({
 }: RentComparisonChartProps) {
   const [data, setData] = useState<CompetitorComparison[]>([])
   const [loading, setLoading] = useState(true)
-  const [unitTypeFilter, setUnitTypeFilter] = useState<string>('all')
-  const [availableUnitTypes, setAvailableUnitTypes] = useState<string[]>([])
+  const [bedroomFilter, setBedroomFilter] = useState<string>('all')
+  const [availableBedrooms, setAvailableBedrooms] = useState<number[]>([])
 
   useEffect(() => {
     if (propertyId) {
       fetchComparisonData()
     }
-  }, [propertyId, unitTypeFilter])
+  }, [propertyId, bedroomFilter])
 
   const fetchComparisonData = async () => {
     if (!propertyId) return
@@ -74,8 +74,8 @@ export function RentComparisonChart({
         propertyId,
         type: 'comparison'
       })
-      if (unitTypeFilter !== 'all') {
-        params.set('unitType', unitTypeFilter)
+      if (bedroomFilter !== 'all') {
+        params.set('bedrooms', bedroomFilter)
       }
 
       const res = await fetch(`/api/marketvision/analysis?${params}`)
@@ -84,13 +84,13 @@ export function RentComparisonChart({
       if (res.ok) {
         setData(result.comparisons || [])
         
-        // Extract unique unit types for filter
-        if (unitTypeFilter === 'all' && result.comparisons?.length > 0) {
-          const types = new Set<string>()
+        // Extract unique bedroom counts for filter
+        if (bedroomFilter === 'all' && result.comparisons?.length > 0) {
+          const bedrooms = new Set<number>()
           result.comparisons.forEach((comp: CompetitorComparison) => {
-            comp.units.forEach(u => types.add(u.unitType))
+            comp.units.forEach(u => bedrooms.add(u.bedrooms))
           })
-          setAvailableUnitTypes(Array.from(types).sort())
+          setAvailableBedrooms(Array.from(bedrooms).sort((a, b) => a - b))
         }
       }
     } catch (err) {
@@ -135,6 +135,13 @@ export function RentComparisonChart({
     )
   }
 
+  // Helper function to format bedroom count as readable label
+  const getBedroomLabel = (bedrooms: number): string => {
+    if (bedrooms === 0) return 'Studio'
+    if (bedrooms === 1) return '1 Bedroom'
+    return `${bedrooms} Bedrooms`
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex items-center justify-between mb-6">
@@ -142,15 +149,17 @@ export function RentComparisonChart({
           Rent Comparison
         </h3>
         <div className="flex items-center gap-3">
-          {availableUnitTypes.length > 0 && (
+          {availableBedrooms.length > 0 && (
             <select
-              value={unitTypeFilter}
-              onChange={(e) => setUnitTypeFilter(e.target.value)}
+              value={bedroomFilter}
+              onChange={(e) => setBedroomFilter(e.target.value)}
               className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700"
             >
               <option value="all">All Unit Types</option>
-              {availableUnitTypes.map(type => (
-                <option key={type} value={type}>{type}</option>
+              {availableBedrooms.map(bedrooms => (
+                <option key={bedrooms} value={bedrooms.toString()}>
+                  {getBedroomLabel(bedrooms)}
+                </option>
               ))}
             </select>
           )}
@@ -237,7 +246,9 @@ export function RentComparisonChart({
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            {unitTypeFilter === 'all' ? 'Showing average rent across all unit types' : `Filtered by ${unitTypeFilter}`}
+            {bedroomFilter === 'all' 
+              ? 'Showing average rent across all unit types' 
+              : `Filtered by ${getBedroomLabel(parseInt(bedroomFilter))}`}
           </p>
         </div>
       )}

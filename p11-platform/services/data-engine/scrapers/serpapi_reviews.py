@@ -204,3 +204,6 @@ def is_serpapi_configured() -> bool:
     """Check if SerpAPI is configured"""
     return bool(os.environ.get('SERPAPI_API_KEY'))
 
+
+
+

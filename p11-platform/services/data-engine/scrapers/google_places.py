@@ -73,6 +73,8 @@ class GooglePlacesScraper:
     
     Searches for apartment complexes, real estate agencies, and lodging
     near a given location to find potential competitors.
+    
+    Supports property type filtering to only return relevant competitors.
     """
     
     # Place types to search for apartment communities
@@ -91,6 +93,7 @@ class GooglePlacesScraper:
     ]
     
     # Keywords that indicate non-competitor (filter out)
+    # These are filtered regardless of property type
     EXCLUDE_KEYWORDS = [
         'senior living',
         'assisted living',
@@ -104,14 +107,45 @@ class GooglePlacesScraper:
         'hostel',
         'property management',
         'management company',
+        'management group',
         'brokerage',
         'broker',
         'realty group',
+        'realty company',
         'real estate agent',
+        'real estate group',
+        'real estate company',
         'realtor',
         'investment',
+        'investments',
         'consulting',
         'leasing office',
+        'corporate office',
+        'headquarters',
+        'hq',
+        'properties llc',
+        'properties inc',
+        'property group',
+        'asset management',
+        'capital',
+        'holdings',
+        'ventures',
+        'development',
+        'developers',
+        'construction',
+        'builder',
+    ]
+    
+    # Property type specific exclude keywords
+    # When searching for "multifamily" properties, also exclude these
+    MULTIFAMILY_EXCLUDE = [
+        'single family',
+        'townhome',
+        'townhouse',
+        'condo',
+        'condominium',
+        'mobile home',
+        'manufactured',
     ]
     
     def __init__(self, api_key: Optional[str] = None):
@@ -133,7 +167,8 @@ class GooglePlacesScraper:
         lat: float,
         lng: float,
         radius_meters: int = 5000,
-        max_results: int = 20
+        max_results: int = 20,
+        property_type: Optional[str] = None
     ) -> List[PlaceResult]:
         """
         Search for apartment communities near coordinates
@@ -143,6 +178,7 @@ class GooglePlacesScraper:
             lng: Longitude  
             radius_meters: Search radius in meters (max 50000)
             max_results: Maximum results to return
+            property_type: Subject property type for filtering (e.g., "multifamily")
             
         Returns:
             List of PlaceResult objects
@@ -173,7 +209,7 @@ class GooglePlacesScraper:
                         seen_place_ids.add(place_id)
                         
                         result = self._parse_place(place)
-                        if result and self._is_valid_competitor(result):
+                        if result and self._is_valid_competitor(result, property_type):
                             all_results.append(result)
                             
                             if len(all_results) >= max_results:
@@ -192,7 +228,7 @@ class GooglePlacesScraper:
                         seen_place_ids.add(place_id)
                         
                         result = self._parse_place(place)
-                        if result and self._is_valid_competitor(result):
+                        if result and self._is_valid_competitor(result, property_type):
                             all_results.append(result)
                             
                             if len(all_results) >= max_results:
@@ -202,7 +238,7 @@ class GooglePlacesScraper:
                 logger.error(f"Error in Google Places search: {e}")
                 continue
         
-        logger.info(f"Found {len(all_results)} potential competitors from Google Places")
+        logger.info(f"Found {len(all_results)} potential competitors from Google Places (property_type filter: {property_type})")
         return all_results[:max_results]
     
     def get_place_details(self, place_id: str) -> Optional[Dict[str, Any]]:
@@ -273,25 +309,62 @@ class GooglePlacesScraper:
             logger.error(f"Error parsing place: {e}")
             return None
     
-    def _is_valid_competitor(self, result: PlaceResult) -> bool:
+    def _is_valid_competitor(
+        self, 
+        result: PlaceResult,
+        property_type: Optional[str] = None
+    ) -> bool:
         """
         Check if a place result is a valid apartment competitor
         
         Filters out non-apartment businesses like hotels, storage, etc.
+        Also applies property type specific filtering.
+        
+        Args:
+            result: PlaceResult to validate
+            property_type: Subject property type for smarter filtering
+                          (e.g., "multifamily", "apartment", "student_housing")
         """
         name_lower = result.name.lower()
         address_lower = result.address.lower()
-        types_str = ' '.join(result.types).lower()
+        types_str = ' '.join(result.types or []).lower()
+        combined_text = f"{name_lower} {types_str}"
         
-        # Check for exclude keywords
+        # Check for general exclude keywords
         for keyword in self.EXCLUDE_KEYWORDS:
-            if keyword in name_lower or keyword in types_str:
+            if keyword in combined_text:
                 logger.debug(f"Excluding {result.name} - matches exclude keyword: {keyword}")
                 return False
         
-        # Must have a name
+        # Apply property type specific filtering
+        if property_type:
+            property_type_lower = property_type.lower()
+            
+            # For multifamily/apartment properties, exclude non-apartment types
+            if any(t in property_type_lower for t in ['multifamily', 'apartment', 'multi-family']):
+                for keyword in self.MULTIFAMILY_EXCLUDE:
+                    if keyword in combined_text:
+                        logger.debug(f"Excluding {result.name} - multifamily filter: {keyword}")
+                        return False
+        
+        # Must have a name with reasonable length
         if not result.name or len(result.name) < 3:
             return False
+        
+        # Additional heuristics to filter management companies
+        # Names ending with common corporate suffixes without apartment indicators
+        corp_suffixes = ['llc', 'inc', 'corp', 'company', 'co.', 'group']
+        apartment_indicators = ['apartment', 'living', 'residences', 'lofts', 'flats', 'place', 'commons', 'park', 'village', 'gardens', 'terrace', 'heights', 'plaza', 'square', 'court', 'pointe', 'crossing', 'landing', 'station']
+        
+        has_corp_suffix = any(name_lower.endswith(s) or f' {s} ' in name_lower for s in corp_suffixes)
+        has_apartment_indicator = any(ind in name_lower for ind in apartment_indicators)
+        
+        # If it has corporate suffix but no apartment indicator, likely a company not a property
+        if has_corp_suffix and not has_apartment_indicator:
+            # Check if it's clearly "X Properties" pattern without apartment context
+            if name_lower.endswith('properties') and not has_apartment_indicator:
+                logger.debug(f"Excluding {result.name} - appears to be management company")
+                return False
         
         return True
     
@@ -373,7 +446,8 @@ class GooglePlacesScraper:
         lng: float,
         radius_miles: float = 3.0,
         max_results: int = 20,
-        include_details: bool = True
+        include_details: bool = True,
+        property_type: Optional[str] = None
     ) -> List[ScrapedProperty]:
         """
         Main method: Discover competitor apartments near a location
@@ -384,6 +458,8 @@ class GooglePlacesScraper:
             radius_miles: Search radius in miles
             max_results: Maximum competitors to return
             include_details: Fetch detailed info (uses more API quota)
+            property_type: Subject property type for intelligent filtering
+                          (e.g., "multifamily", "apartment", "student_housing")
             
         Returns:
             List of ScrapedProperty objects
@@ -394,12 +470,15 @@ class GooglePlacesScraper:
         # Cap at Google's limit
         radius_meters = min(radius_meters, 50000)
         
+        logger.info(f"Discovering competitors with property_type filter: {property_type}")
+        
         # Search for places
         results = self.search_nearby(
             lat=lat,
             lng=lng,
             radius_meters=radius_meters,
-            max_results=max_results
+            max_results=max_results,
+            property_type=property_type
         )
         
         # Convert to ScrapedProperty format

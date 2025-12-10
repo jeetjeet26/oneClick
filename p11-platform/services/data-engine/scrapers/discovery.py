@@ -57,6 +57,7 @@ class SubjectPropertyInfo:
     avg_rent: Optional[float] = None
     amenities: List[str] = field(default_factory=list)
     city: str = ""
+    property_type: Optional[str] = None  # e.g., "multifamily", "apartment", "student_housing"
 
 
 class CompetitorDiscovery:
@@ -189,10 +190,13 @@ class CompetitorDiscovery:
         """
         all_properties = []
         
+        # Get property_type from subject info for intelligent filtering
+        property_type = self.subject_info.property_type if self.subject_info else None
+        
         # Try Google Places first (most reliable)
         if 'google_places' in self.scrapers:
             try:
-                logger.info("Searching Google Places for competitors...")
+                logger.info(f"Searching Google Places for competitors (property_type: {property_type})...")
                 google_scraper = self.scrapers['google_places']
                 
                 properties = google_scraper.discover_competitors(
@@ -200,7 +204,8 @@ class CompetitorDiscovery:
                     lng=lng,
                     radius_miles=self.config.radius_miles,
                     max_results=self.config.max_competitors,
-                    include_details=True
+                    include_details=True,
+                    property_type=property_type
                 )
                 
                 logger.info(f"Found {len(properties)} competitors from Google Places")

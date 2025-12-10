@@ -94,16 +94,24 @@ export async function POST(request: NextRequest) {
     .single()
 
   // Generate the response
-  const responseText = await generateResponse({
-    reviewText: review.review_text,
-    rating: review.rating,
-    sentiment: review.sentiment || 'neutral',
-    topics: review.topics || [],
-    propertyName: review.properties?.name,
-    propertyPersonality: config?.property_personality,
-    tone: tone || config?.default_tone || 'professional',
-    reviewerName: review.reviewer_name
-  })
+  let responseText: string
+  try {
+    responseText = await generateResponse({
+      reviewText: review.review_text,
+      rating: review.rating,
+      sentiment: review.sentiment || 'neutral',
+      topics: review.topics || [],
+      propertyName: review.properties?.name,
+      propertyPersonality: config?.property_personality,
+      tone: tone || config?.default_tone || 'professional',
+      reviewerName: review.reviewer_name
+    })
+  } catch (aiError) {
+    console.error('OpenAI error:', aiError)
+    return NextResponse.json({ 
+      error: aiError instanceof Error ? aiError.message : 'Failed to generate AI response' 
+    }, { status: 500 })
+  }
 
   // Save the generated response
   const { data: savedResponse, error: saveError } = await supabase

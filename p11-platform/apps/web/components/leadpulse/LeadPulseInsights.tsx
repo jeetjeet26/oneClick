@@ -346,3 +346,6 @@ function SimpleTrendChart({ data }: { data: { date: string; avgScore: number; ho
 export default LeadPulseInsights
 
 
+
+
+

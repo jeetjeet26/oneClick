@@ -70,12 +70,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'propertyId required' }, { status: 400 })
     }
 
-    // Build query
+    // Build query - include brand intelligence for highlighted amenities
     let query = supabase
       .from('competitors')
       .select(includeUnits 
-        ? '*, units:competitor_units(*)' 
-        : '*'
+        ? '*, units:competitor_units(*), brand_intel:competitor_brand_intelligence(highlighted_amenities)' 
+        : '*, brand_intel:competitor_brand_intelligence(highlighted_amenities)'
       )
       .eq('property_id', propertyId)
       .order('name', { ascending: true })
@@ -132,18 +132,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'propertyId and name required' }, { status: 400 })
     }
 
+    // Helper to convert empty strings to null for integer fields
+    const toIntOrNull = (val: unknown): number | null => {
+      if (val === '' || val === null || val === undefined) return null
+      const num = typeof val === 'string' ? parseInt(val, 10) : val
+      return isNaN(num as number) ? null : num as number
+    }
+
     // Insert competitor
     const { data: competitor, error } = await supabase
       .from('competitors')
       .insert({
         property_id: propertyId,
         name,
-        address,
+        address: address || null,
         address_json: addressJson || null,
         website_url: websiteUrl || null,
         phone: phone || null,
-        units_count: unitsCount || null,
-        year_built: yearBuilt || null,
+        units_count: toIntOrNull(unitsCount),
+        year_built: toIntOrNull(yearBuilt),
         property_type: propertyType || 'apartment',
         amenities: amenities || [],
         ils_listings: ilsListings || {},
@@ -221,20 +228,27 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Competitor id required' }, { status: 400 })
     }
 
+    // Helper to convert empty strings to null for integer fields
+    const toIntOrNull = (val: unknown): number | null => {
+      if (val === '' || val === null || val === undefined) return null
+      const num = typeof val === 'string' ? parseInt(val, 10) : val
+      return isNaN(num as number) ? null : num as number
+    }
+
     // Convert camelCase to snake_case for update
     const dbUpdates: Record<string, unknown> = {}
     if (updates.name !== undefined) dbUpdates.name = updates.name
-    if (updates.address !== undefined) dbUpdates.address = updates.address
+    if (updates.address !== undefined) dbUpdates.address = updates.address || null
     if (updates.addressJson !== undefined) dbUpdates.address_json = updates.addressJson
-    if (updates.websiteUrl !== undefined) dbUpdates.website_url = updates.websiteUrl
-    if (updates.phone !== undefined) dbUpdates.phone = updates.phone
-    if (updates.unitsCount !== undefined) dbUpdates.units_count = updates.unitsCount
-    if (updates.yearBuilt !== undefined) dbUpdates.year_built = updates.yearBuilt
+    if (updates.websiteUrl !== undefined) dbUpdates.website_url = updates.websiteUrl || null
+    if (updates.phone !== undefined) dbUpdates.phone = updates.phone || null
+    if (updates.unitsCount !== undefined) dbUpdates.units_count = toIntOrNull(updates.unitsCount)
+    if (updates.yearBuilt !== undefined) dbUpdates.year_built = toIntOrNull(updates.yearBuilt)
     if (updates.propertyType !== undefined) dbUpdates.property_type = updates.propertyType
     if (updates.amenities !== undefined) dbUpdates.amenities = updates.amenities
     if (updates.photos !== undefined) dbUpdates.photos = updates.photos
     if (updates.ilsListings !== undefined) dbUpdates.ils_listings = updates.ilsListings
-    if (updates.notes !== undefined) dbUpdates.notes = updates.notes
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null
     if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive
 
     const { data: competitor, error } = await supabase
@@ -295,6 +309,17 @@ export async function DELETE(req: NextRequest) {
 
 // Format competitor from DB to API response
 function formatCompetitor(data: Record<string, unknown>): Competitor {
+  // Get amenities from main table or fall back to brand intelligence highlighted_amenities
+  let amenities = (data.amenities as string[]) || []
+  
+  // If no amenities saved, use highlighted_amenities from brand intelligence
+  if (amenities.length === 0 && data.brand_intel) {
+    const brandIntel = data.brand_intel as { highlighted_amenities?: string[] } | null
+    if (brandIntel?.highlighted_amenities && Array.isArray(brandIntel.highlighted_amenities)) {
+      amenities = brandIntel.highlighted_amenities
+    }
+  }
+
   const formatted: Competitor = {
     id: data.id as string,
     propertyId: data.property_id as string,
@@ -306,7 +331,7 @@ function formatCompetitor(data: Record<string, unknown>): Competitor {
     unitsCount: data.units_count as number | null,
     yearBuilt: data.year_built as number | null,
     propertyType: data.property_type as string || 'apartment',
-    amenities: (data.amenities as string[]) || [],
+    amenities,
     photos: (data.photos as string[]) || [],
     ilsListings: (data.ils_listings as Record<string, string>) || {},
     notes: data.notes as string | null,

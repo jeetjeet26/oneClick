@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Sparkles, Loader2, Wand2 } from 'lucide-react'
+import { X, Sparkles, Loader2, Wand2, CheckCircle } from 'lucide-react'
 
 interface ResponseGeneratorProps {
   reviewId: string
@@ -45,6 +45,7 @@ export function ResponseGenerator({
 }: ResponseGeneratorProps) {
   const [selectedTone, setSelectedTone] = useState(defaultTone)
   const [loading, setLoading] = useState(false)
+  const [generatedResponse, setGeneratedResponse] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleGenerate = async () => {
@@ -61,21 +62,27 @@ export function ResponseGenerator({
         })
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || 'Failed to generate response')
       }
 
-      onGenerated()
+      // Store the generated response to display
+      setGeneratedResponse(data.responseText)
+      setLoading(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
       setLoading(false)
     }
   }
 
+  const handleDone = () => {
+    onGenerated()
+  }
+  
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -111,82 +118,146 @@ export function ResponseGenerator({
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Tone Selection */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
-              Response Tone
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {toneOptions.map((tone) => (
-                <button
-                  key={tone.value}
-                  onClick={() => setSelectedTone(tone.value as typeof selectedTone)}
-                  className={`text-left p-4 rounded-xl border-2 transition-all ${
-                    selectedTone === tone.value
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
-                      : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{tone.emoji}</span>
-                    <span className={`font-medium ${
-                      selectedTone === tone.value 
-                        ? 'text-indigo-700 dark:text-indigo-300' 
-                        : 'text-slate-900 dark:text-white'
-                    }`}>
-                      {tone.label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {tone.description}
+          {/* Success State - Show Generated Response */}
+          {generatedResponse ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">
+                    Response Generated!
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {selectedTone.charAt(0).toUpperCase() + selectedTone.slice(1)} tone
                   </p>
-                </button>
-              ))}
-            </div>
-          </div>
+                </div>
+              </div>
+              
+              <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 max-h-64 overflow-y-auto">
+                <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                  {generatedResponse}
+                </p>
+              </div>
 
-          {/* Info Box */}
-          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              <strong>AI-Powered:</strong> The response will be tailored to the review content, 
-              sentiment, and your property&apos;s personality. You can edit before posting.
-            </p>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg p-3 text-sm">
-              {error}
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
+                You can edit this response in the review panel before posting.
+              </p>
             </div>
+          ) : loading ? (
+            <div className="py-8 text-center">
+              <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Loader2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                Generating Response...
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400">
+                AI is crafting a personalized reply. This may take a few seconds.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Tone Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                  Response Tone
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {toneOptions.map((tone) => (
+                    <button
+                      key={tone.value}
+                      onClick={() => setSelectedTone(tone.value as typeof selectedTone)}
+                      className={`text-left p-4 rounded-xl border-2 transition-all ${
+                        selectedTone === tone.value
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                          : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{tone.emoji}</span>
+                        <span className={`font-medium ${
+                          selectedTone === tone.value 
+                            ? 'text-indigo-700 dark:text-indigo-300' 
+                            : 'text-slate-900 dark:text-white'
+                        }`}>
+                          {tone.label}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {tone.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  <strong>AI-Powered:</strong> The response will be tailored to the review content, 
+                  sentiment, and your property&apos;s personality. You can edit before posting.
+                </p>
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg p-3 text-sm">
+                  {error}
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25"
-          >
-            {loading ? (
+        {!loading && (
+          <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+            {generatedResponse ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating...
+                <button
+                  onClick={() => {
+                    setGeneratedResponse(null)
+                    setError(null)
+                  }}
+                  className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  Regenerate
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDone}
+                  className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/25"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Done
+                </button>
               </>
             ) : (
               <>
-                <Wand2 className="w-4 h-4" />
-                Generate Response
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleGenerate()
+                  }}
+                  className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg shadow-indigo-500/25"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  Generate Response
+                </button>
               </>
             )}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

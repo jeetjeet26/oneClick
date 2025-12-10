@@ -78,6 +78,9 @@ class ScrapingCoordinator:
         """
         Discover competitors near a property and optionally add them
         
+        Uses intelligent filtering based on property_type to only find
+        relevant competitors (e.g., only apartments for apartment properties).
+        
         Args:
             property_id: Supabase property ID
             radius_miles: Search radius in miles
@@ -87,9 +90,9 @@ class ScrapingCoordinator:
         Returns:
             Dict with discovered competitors and status
         """
-        # Get property details (including info for smart matching)
+        # Get property details (including property_type for intelligent filtering)
         property_result = self.supabase.table('properties').select(
-            'id, name, address, year_built, unit_count, amenities'
+            'id, name, address, year_built, unit_count, amenities, property_type'
         ).eq('id', property_id).single().execute()
         
         if not property_result.data:
@@ -97,6 +100,7 @@ class ScrapingCoordinator:
         
         property_data = property_result.data
         address_json = property_data.get('address') or {}
+        property_type = property_data.get('property_type')
         
         # Build address string
         address_parts = [
@@ -111,6 +115,7 @@ class ScrapingCoordinator:
             return {'success': False, 'error': 'Property has no address'}
         
         logger.info(f"Discovering competitors for: {property_data['name']} at {full_address}")
+        logger.info(f"Property type filter: {property_type or 'None (no filtering)'}")
         
         # Try to get average rent from property units for classification
         avg_rent = None
@@ -126,14 +131,15 @@ class ScrapingCoordinator:
         except Exception as e:
             logger.debug(f"Could not fetch units for avg rent: {e}")
         
-        # Create subject property info for smart matching
+        # Create subject property info for smart matching (now with property_type)
         subject_info = SubjectPropertyInfo(
             name=property_data['name'],
             year_built=property_data.get('year_built'),
             units_count=property_data.get('unit_count'),
             avg_rent=avg_rent,
             amenities=property_data.get('amenities') or [],
-            city=address_json.get('city', '')
+            city=address_json.get('city', ''),
+            property_type=property_type
         )
         
         # Configure and run discovery
@@ -1371,22 +1377,30 @@ class ScrapingCoordinator:
         competitor_ids: Optional[List[str]] = None,
         auto_scrape: bool = True,
         city_override: Optional[str] = None,
-        state_override: Optional[str] = None
+        state_override: Optional[str] = None,
+        search_strategy: str = "name"
     ) -> Dict[str, Any]:
         """
-        Search apartments.com for existing competitors and link their listings.
+        Find and save apartments.com URLs for competitors that don't have them.
         
-        Uses Apify to search for competitor names in apartments.com search results.
+        **Flow:**
+        1. Check which competitors already have apartments.com URLs → SKIP these
+        2. For those WITHOUT URLs → use search helper to find and save URLs
+        3. Optionally scrape pricing data for newly found URLs
+        
+        NOTE: This does NOT re-scrape existing URLs. Use the refresh endpoints for that.
         
         Args:
             property_id: Property UUID
             competitor_ids: Optional specific competitor IDs (None = all without URLs)
-            auto_scrape: Automatically scrape pricing after finding URLs
+            auto_scrape: Scrape pricing after finding new URLs
             city_override: Override city for all searches
             state_override: Override state for all searches
+            search_strategy: "name" (search by property name - faster, more accurate) or 
+                           "area" (search entire city - slower, may timeout)
             
         Returns:
-            Dict with results: found, not_found, errors
+            Dict with results: skipped (already have URLs), found, not_found, errors
         """
         import re
         
@@ -1414,7 +1428,7 @@ class ScrapingCoordinator:
                 if not property_state:
                     property_state = prop_address.get('state', '')
         
-        # Get competitors without apartments.com URLs
+        # Get all competitors
         query = self.supabase.table('competitors').select(
             'id, name, address, address_json, ils_listings'
         ).eq('property_id', property_id).eq('is_active', True)
@@ -1425,46 +1439,310 @@ class ScrapingCoordinator:
         result = query.execute()
         competitors = result.data or []
         
-        # Filter to those without apartments.com URLs
+        if not competitors:
+            return {
+                'success': True,
+                'message': 'No active competitors found',
+                'skipped': 0,
+                'found': 0,
+                'searched': 0
+            }
+        
+        # Split into those WITH and WITHOUT apartments.com URLs
+        competitors_with_urls = [
+            c for c in competitors 
+            if (c.get('ils_listings') or {}).get('apartments_com')
+        ]
         competitors_to_search = [
             c for c in competitors 
             if not (c.get('ils_listings') or {}).get('apartments_com')
         ]
         
+        logger.info(f"[Find Listings] Skipping {len(competitors_with_urls)} competitors (already have URLs), searching for {len(competitors_to_search)}")
+        
+        # If all competitors already have URLs, return early
         if not competitors_to_search:
             return {
                 'success': True,
-                'message': 'All competitors already have apartments.com URLs',
+                'scraper': 'apify',
+                'total_competitors': len(competitors),
+                'skipped': len(competitors_with_urls),
+                'skipped_competitors': [
+                    {'id': c['id'], 'name': c['name'], 'apartments_com_url': c['ils_listings']['apartments_com']}
+                    for c in competitors_with_urls
+                ],
+                'searched': 0,
                 'found': 0,
-                'searched': 0
+                'not_found': 0,
+                'message': 'All competitors already have apartments.com URLs. Use refresh endpoint to update pricing.'
             }
         
-        logger.info(f"Searching apartments.com via Apify for {len(competitors_to_search)} competitors")
-        logger.info(f"Property location fallback: {property_city}, {property_state}")
-        
-        # Use Apify to search the area first
+        # Search for competitors without URLs
         search_city = city_override or property_city
         search_state = state_override or property_state
         
         if not search_city or not search_state:
             return {
                 'success': False,
-                'error': 'City and state required for apartments.com search. Provide city_override and state_override.',
+                'error': 'City and state required for apartments.com search. Provide city and state overrides.',
+                'skipped': len(competitors_with_urls),
                 'searched': 0,
                 'found': 0
             }
         
+        logger.info(f"[Find Listings] Searching for {len(competitors_to_search)} competitors using '{search_strategy}' strategy in {search_city}, {search_state}")
+        
+        # Use the appropriate search strategy
+        if search_strategy == "name":
+            search_results = await self._find_listings_by_name_search(
+                competitors_to_search,
+                search_city,
+                search_state,
+                auto_scrape
+            )
+        else:
+            search_results = await self._find_listings_by_area_search(
+                competitors_to_search,
+                search_city,
+                search_state,
+                auto_scrape
+            )
+        
+        # Add skipped info to results
+        search_results['total_competitors'] = len(competitors)
+        search_results['skipped'] = len(competitors_with_urls)
+        search_results['skipped_competitors'] = [
+            {'id': c['id'], 'name': c['name'], 'apartments_com_url': c['ils_listings']['apartments_com']}
+            for c in competitors_with_urls[:10]  # Limit to first 10
+        ]
+        search_results['message'] = f"Skipped {len(competitors_with_urls)} (already have URLs), found {search_results.get('found', 0)} new URLs for {len(competitors_to_search)} searched"
+        
+        return search_results
+    
+    async def _find_listings_by_name_search(
+        self,
+        competitors: List[Dict],
+        city: str,
+        state: str,
+        auto_scrape: bool
+    ) -> Dict[str, Any]:
+        """
+        Search apartments.com by property name + city for each competitor.
+        
+        Strategy:
+        1. First try Apify search with property name
+        2. If search returns no results, try constructing direct URL and scraping
+        
+        This is faster and more targeted than searching the entire city.
+        """
+        import re
+        from urllib.parse import quote
+        
+        scraper = ApifyApartmentsScraper()
+        
+        found = []
+        not_found = []
+        errors = []
+        
+        def slugify(text: str) -> str:
+            """Convert text to URL-friendly slug"""
+            # Remove special characters, replace spaces with hyphens
+            slug = re.sub(r'[^\w\s-]', '', text.lower())
+            slug = re.sub(r'[\s_]+', '-', slug)
+            slug = re.sub(r'-+', '-', slug).strip('-')
+            return slug
+        
+        for competitor in competitors:
+            comp_name = competitor['name']
+            
+            # Extract core property name (remove common suffixes for search)
+            search_name = comp_name
+            for suffix in [' Apartments', ' Apartment', ' Residences', ' Living', ' Homes', ' at ', ' by ']:
+                if suffix.lower() in search_name.lower():
+                    idx = search_name.lower().find(suffix.lower())
+                    search_name = search_name[:idx]
+                    break
+            
+            # Build search query: "Property Name City State"
+            search_query = f"{search_name} {city} {state}"
+            
+            logger.info(f"[Name Search] Searching: '{search_query}' for competitor: {comp_name}")
+            
+            try:
+                # First try: Apify search with property name
+                results = scraper._run_sync_get_items(
+                    search=search_query,
+                    max_items=10,
+                    end_page=2
+                )
+                
+                logger.info(f"[Name Search] Got {len(results)} results for '{search_name}'")
+                
+                # If search returned no results, try direct URL construction
+                if not results:
+                    # Try constructing a direct apartments.com URL
+                    # Pattern: https://www.apartments.com/{name-slug}-{city}-{state}/
+                    name_slug = slugify(comp_name)
+                    city_slug = slugify(city)
+                    state_abbrev = state.upper() if len(state) == 2 else state[:2].upper()
+                    
+                    # Try a few URL patterns
+                    url_patterns = [
+                        f"https://www.apartments.com/{name_slug}-{city_slug}-{state_abbrev.lower()}/",
+                        f"https://www.apartments.com/{slugify(search_name)}-{city_slug}-{state_abbrev.lower()}/",
+                    ]
+                    
+                    for try_url in url_patterns:
+                        logger.info(f"[Name Search] Trying direct URL: {try_url}")
+                        try:
+                            direct_result = scraper.scrape_property(try_url)
+                            if direct_result and direct_result.name:
+                                results = [direct_result]
+                                logger.info(f"[Name Search] Direct URL worked! Found: {direct_result.name}")
+                                break
+                        except Exception as url_err:
+                            logger.debug(f"[Name Search] Direct URL failed: {url_err}")
+                            continue
+                
+                if not results:
+                    not_found.append({
+                        'id': competitor['id'],
+                        'name': comp_name,
+                        'search_query': search_query,
+                        'reason': 'No results from apartments.com search'
+                    })
+                    continue
+                
+                # Try to find best match
+                matched_property = None
+                match_score = 0
+                
+                # Normalize competitor name for matching
+                comp_name_normalized = re.sub(r'[^\w\s]', '', comp_name.lower().strip())
+                search_name_normalized = re.sub(r'[^\w\s]', '', search_name.lower().strip())
+                
+                for prop in results:
+                    prop_name_normalized = re.sub(r'[^\w\s]', '', prop.name.lower().strip())
+                    
+                    # Exact match
+                    if prop_name_normalized == comp_name_normalized:
+                        matched_property = prop
+                        match_score = 100
+                        break
+                    
+                    # Search name match (without suffixes)
+                    if search_name_normalized in prop_name_normalized or prop_name_normalized in search_name_normalized:
+                        if not matched_property or len(prop_name_normalized) < len(matched_property.name):
+                            matched_property = prop
+                            match_score = 85
+                    
+                    # Partial match - core words overlap
+                    comp_words = set(comp_name_normalized.split())
+                    prop_words = set(prop_name_normalized.split())
+                    overlap = comp_words & prop_words
+                    
+                    # At least 2 words match, or the main word matches
+                    if len(overlap) >= 2 or (search_name_normalized.split()[0] in prop_words if search_name_normalized.split() else False):
+                        if not matched_property:
+                            matched_property = prop
+                            match_score = 70
+                
+                if matched_property:
+                    # Found a match! Update the competitor
+                    ils_listings = competitor.get('ils_listings') or {}
+                    ils_listings['apartments_com'] = matched_property.source_url
+                    
+                    self.supabase.table('competitors').update({
+                        'ils_listings': ils_listings
+                    }).eq('id', competitor['id']).execute()
+                    
+                    found_entry = {
+                        'id': competitor['id'],
+                        'name': comp_name,
+                        'apartments_com_url': matched_property.source_url,
+                        'matched_name': matched_property.name,
+                        'match_score': match_score,
+                        'search_query': search_query
+                    }
+                    
+                    # Auto-scrape (data already available from search)
+                    if auto_scrape and matched_property.units:
+                        self._update_competitor(competitor['id'], matched_property)
+                        found_entry['units_scraped'] = len(matched_property.units)
+                    
+                    found.append(found_entry)
+                    logger.info(f"[Name Search] ✓ Found: {comp_name} → {matched_property.name} (score: {match_score})")
+                else:
+                    not_found.append({
+                        'id': competitor['id'],
+                        'name': comp_name,
+                        'search_query': search_query,
+                        'results_count': len(results),
+                        'reason': 'No confident match in search results'
+                    })
+                    logger.info(f"[Name Search] ✗ No match for: {comp_name}")
+                    
+            except Exception as e:
+                logger.error(f"[Name Search] Error searching for {comp_name}: {e}")
+                errors.append({
+                    'id': competitor['id'],
+                    'name': comp_name,
+                    'search_query': search_query,
+                    'error': str(e)
+                })
+        
+        return {
+            'success': True,
+            'scraper': 'apify',
+            'search_strategy': 'name',
+            'searched': len(competitors),
+            'found': len(found),
+            'not_found': len(not_found),
+            'errors': len(errors),
+            'found_listings': found,
+            'not_found_listings': not_found[:10],
+            'error_details': errors[:5]
+        }
+    
+    async def _find_listings_by_area_search(
+        self,
+        competitors: List[Dict],
+        city: str,
+        state: str,
+        auto_scrape: bool
+    ) -> Dict[str, Any]:
+        """
+        Search apartments.com by city/area and match competitors by name.
+        
+        This is the original approach - searches entire city then matches names.
+        Can be slow and may timeout for large cities.
+        """
+        import re
+        
         try:
             scraper = ApifyApartmentsScraper()
             
-            # Search apartments.com for the area to get property list
+            # Search apartments.com for the area - reduced to 50 to avoid timeouts
             area_properties = scraper.search_by_location(
-                search_city, 
-                search_state, 
-                max_results=100  # Get more results to increase match chances
+                city, 
+                state, 
+                max_results=50
             )
             
-            logger.info(f"Found {len(area_properties)} properties in {search_city}, {search_state}")
+            logger.info(f"[Area Search] Found {len(area_properties)} properties in {city}, {state}")
+            
+            if not area_properties:
+                return {
+                    'success': True,
+                    'scraper': 'apify',
+                    'search_strategy': 'area',
+                    'searched': len(competitors),
+                    'found': 0,
+                    'not_found': len(competitors),
+                    'errors': 0,
+                    'message': f'No properties found in {city}, {state}. Try name search strategy or manual URL upload.',
+                    'not_found_listings': [{'id': c['id'], 'name': c['name'], 'reason': 'Area search returned no results'} for c in competitors[:10]]
+                }
             
             # Build lookup by normalized name
             name_to_property = {}
@@ -1483,7 +1761,7 @@ class ScrapingCoordinator:
             not_found = []
             errors = []
             
-            for competitor in competitors_to_search:
+            for competitor in competitors:
                 try:
                     # Normalize competitor name for matching
                     comp_name = competitor['name'].lower().strip()
@@ -1538,16 +1816,16 @@ class ScrapingCoordinator:
                             found_entry['units_scraped'] = len(matched_property.units)
                         
                         found.append(found_entry)
-                        logger.info(f"Found apartments.com listing for {competitor['name']}: {matched_property.source_url}")
+                        logger.info(f"[Area Search] Found apartments.com listing for {competitor['name']}: {matched_property.source_url}")
                     else:
                         not_found.append({
                             'id': competitor['id'],
                             'name': competitor['name'],
-                            'reason': 'No match found in search results'
+                            'reason': 'No match found in area search results'
                         })
                         
                 except Exception as e:
-                    logger.error(f"Error matching {competitor['name']}: {e}")
+                    logger.error(f"[Area Search] Error matching {competitor['name']}: {e}")
                     errors.append({
                         'id': competitor['id'],
                         'name': competitor['name'],
@@ -1557,7 +1835,8 @@ class ScrapingCoordinator:
             return {
                 'success': True,
                 'scraper': 'apify',
-                'searched': len(competitors_to_search),
+                'search_strategy': 'area',
+                'searched': len(competitors),
                 'found': len(found),
                 'not_found': len(not_found),
                 'errors': len(errors),
@@ -1567,9 +1846,10 @@ class ScrapingCoordinator:
             }
             
         except Exception as e:
-            logger.error(f"Error searching apartments.com via Apify: {e}")
+            logger.error(f"[Area Search] Error searching apartments.com via Apify: {e}")
             return {
                 'success': False,
+                'search_strategy': 'area',
                 'error': str(e),
                 'searched': 0,
                 'found': 0

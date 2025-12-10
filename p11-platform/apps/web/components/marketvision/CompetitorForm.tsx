@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Building2, 
   X, 
   Plus,
   Trash2,
-  DollarSign
+  DollarSign,
+  Loader2
 } from 'lucide-react'
 
 interface UnitInput {
@@ -41,7 +42,8 @@ interface CompetitorFormProps {
   isEdit?: boolean
 }
 
-const AMENITIES_OPTIONS = [
+// Fallback amenities if API fails
+const FALLBACK_AMENITIES = [
   'Pool', 'Fitness Center', 'Dog Park', 'Clubhouse', 'Business Center',
   'Package Lockers', 'EV Charging', 'Garage Parking', 'Covered Parking',
   'In-Unit Washer/Dryer', 'Balcony/Patio', 'Walk-In Closets', 'Stainless Appliances',
@@ -73,6 +75,34 @@ export function CompetitorForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showUnits, setShowUnits] = useState(formData.units.length > 0)
+  
+  // Dynamic amenities from scraped data
+  const [amenitiesOptions, setAmenitiesOptions] = useState<string[]>(FALLBACK_AMENITIES)
+  const [loadingAmenities, setLoadingAmenities] = useState(true)
+  const [scrapedAmenitiesCount, setScrapedAmenitiesCount] = useState(0)
+
+  // Fetch amenities from API (aggregated from brand intelligence scrapes)
+  useEffect(() => {
+    const fetchAmenities = async () => {
+      try {
+        const res = await fetch(`/api/marketvision/amenities?propertyId=${propertyId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.amenities && data.amenities.length > 0) {
+            setAmenitiesOptions(data.amenities)
+            setScrapedAmenitiesCount(data.scrapedCount || 0)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load amenities:', err)
+        // Keep using fallback amenities
+      } finally {
+        setLoadingAmenities(false)
+      }
+    }
+    
+    fetchAmenities()
+  }, [propertyId])
 
   const handleChange = (field: keyof CompetitorFormData, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -264,25 +294,41 @@ export function CompetitorForm({
 
             {/* Amenities */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Amenities
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {AMENITIES_OPTIONS.map(amenity => (
-                  <button
-                    key={amenity}
-                    type="button"
-                    onClick={() => toggleAmenity(amenity)}
-                    className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                      formData.amenities.includes(amenity)
-                        ? 'bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300'
-                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {amenity}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Amenities
+                </label>
+                {scrapedAmenitiesCount > 0 && (
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                    {scrapedAmenitiesCount} from competitor scrapes
+                  </span>
+                )}
               </div>
+              {loadingAmenities ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading amenities from scrapes...
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {amenitiesOptions.map((amenity, idx) => (
+                    <button
+                      key={amenity}
+                      type="button"
+                      onClick={() => toggleAmenity(amenity)}
+                      className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                        formData.amenities.includes(amenity)
+                          ? 'bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300'
+                          : idx < scrapedAmenitiesCount
+                            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+                            : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {amenity}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Unit Pricing */}
