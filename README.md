@@ -4,9 +4,9 @@
 
 **AI-Powered Marketing Suite for Multifamily Real Estate**
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-91.2%25-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Python](https://img.shields.io/badge/Python-6.9%25-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-81.9%25-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python-15.9%25-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com/)
 
 </div>
@@ -29,11 +29,11 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌──────────────────────┐    ┌─────────────────────────────┐   │
 │  │      Web Console     │    │       Data Engine           │   │
-│  │  (Next.js 15 + React)│    │   (Python + FastAPI)        │   │
+│  │  (Next.js 16 + React)│    │   (Python + FastAPI)        │   │
 │  │                      │    │                             │   │
 │  │  • Dashboard Shell   │    │  • ETL Pipelines (Meta,     │   │
 │  │  • AI Products UI    │    │    Google Ads, GA4)         │   │
-│  │  • Analytics Views   │    │  • Web Scrapers             │   │
+│  │  • Analytics Views   │    │  • Web Scrapers (Apify)     │   │
 │  │  • Settings & Auth   │    │  • ML Models (LeadPulse)    │   │
 │  └──────────┬───────────┘    └─────────────┬───────────────┘   │
 │             │                              │                    │
@@ -57,22 +57,22 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | Product | Description | Status |
 |---------|-------------|--------|
 | **LumaLeasing™** | 24/7 AI chatbot with RAG for instant prospect responses | ✅ Live |
-| **LeadPulse™** | Predictive lead scoring (XGBoost ML model) | 🔨 Building |
-| **TourSpark™** | Automated follow-up sequences that convert | 📋 Planned |
+| **LeadPulse™** | Predictive lead scoring with engagement & behavior analysis | ✅ Live |
+| **TourSpark™** | Automated tour scheduling, reminders & no-show tracking | ✅ Live |
 
 ### Content Factory
 | Product | Description | Status |
 |---------|-------------|--------|
-| **ForgeStudio AI™** | Generate 100+ content pieces monthly per property | ✅ Live |
-| **ReviewFlow AI™** | Sentiment analysis + auto-responses for reviews | ✅ Live |
-| **SocialPilot X™** | Autonomous social media management | 📋 Planned |
+| **ForgeStudio AI™** | Generate content with Google Veo 3 video + Imagen 3 images | ✅ Live |
+| **ReviewFlow AI™** | Multi-source review sync (Google, Yelp) + AI responses | ✅ Live |
+| **SocialPilot X™** | Social media publishing with Instagram integration | ✅ Live |
 
 ### Strategic Intelligence
 | Product | Description | Status |
 |---------|-------------|--------|
 | **MultiChannel BI** | Unified analytics with natural language queries | ✅ Live |
-| **MarketVision 360™** | Real-time competitor intelligence & scraping | ✅ Live |
-| **ChurnSignal™** | Resident churn prediction | 📋 Planned |
+| **MarketVision 360™** | Competitor scraping + Brand Intelligence AI analysis | ✅ Live |
+| **Community Intelligence** | Website scraping + Knowledge base auto-population | ✅ Live |
 
 ---
 
@@ -80,12 +80,14 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 
 | Layer | Technology |
 |-------|------------|
-| **Frontend** | Next.js 15, React 19, Tailwind CSS, Recharts |
-| **Backend** | Next.js API Routes, Supabase Edge Functions |
+| **Frontend** | Next.js 16, React 19.2, Tailwind CSS 4, Recharts |
+| **Backend** | Next.js API Routes, FastAPI (Python) |
 | **Database** | PostgreSQL + pgvector (Supabase) |
-| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, LangChain.js |
-| **Media Generation** | Google Veo 3 Preview (video + audio), Imagen 3.0 (images) via Vertex AI |
-| **Data Pipelines** | Python, dlt, Playwright (scraping) |
+| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, LangChain |
+| **Video Generation** | Google Veo 3 Preview (video + synchronized audio) |
+| **Image Generation** | Google Imagen 3.0 via Vertex AI |
+| **Data Pipelines** | Python, dlt, Apify (Apartments.com scraping) |
+| **Review APIs** | Google Places API, Yelp Fusion API |
 | **Auth** | Supabase Auth (GoTrue) |
 | **Deployment** | Vercel (web), Heroku (data-engine) |
 
@@ -97,23 +99,48 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 oneClick/
 ├── p11-platform/
 │   ├── apps/
-│   │   └── web/                    # Next.js 15 Dashboard
+│   │   └── web/                    # Next.js 16 Dashboard
 │   │       ├── app/
-│   │       │   ├── api/            # API Routes
-│   │       │   │   ├── analytics/  # BI endpoints
-│   │       │   │   ├── chat/       # LumaLeasing RAG
-│   │       │   │   ├── forgestudio/# Content generation
-│   │       │   │   ├── marketvision/# Competitor intel
-│   │       │   │   └── reviewflow/ # Review management
+│   │       │   ├── api/            # API Routes (80+ endpoints)
+│   │       │   │   ├── analytics/  # BI endpoints (performance, goals, campaigns)
+│   │       │   │   ├── chat/       # LumaLeasing RAG chat
+│   │       │   │   ├── community/  # Community profile & contacts
+│   │       │   │   ├── forgestudio/# Content + Veo 3 video generation
+│   │       │   │   ├── leadpulse/  # ML-powered lead scoring
+│   │       │   │   ├── lumaleasing/# Admin config & conversations
+│   │       │   │   ├── marketvision/# Competitor + brand intelligence
+│   │       │   │   ├── reviewflow/ # Multi-source review management
+│   │       │   │   └── onboarding/ # Website scraping & setup
 │   │       │   ├── auth/           # Authentication pages
-│   │       │   └── dashboard/      # Product pages
-│   │       └── components/         # React components
+│   │       │   ├── dashboard/      # Product pages (14 sections)
+│   │       │   └── onboarding/     # Multi-step wizard (6 steps)
+│   │       └── components/         # React components (80+)
+│   │           ├── charts/         # BI visualizations
+│   │           ├── community/      # Community management
+│   │           ├── forgestudio/    # Content generation UI
+│   │           ├── leadpulse/      # Lead scoring components
+│   │           ├── lumaleasing/    # Chatbot widget + config
+│   │           ├── marketvision/   # Competitor analysis
+│   │           └── reviewflow/     # Review management
 │   ├── services/
 │   │   └── data-engine/            # Python ETL & ML
-│   │       ├── pipelines/          # GA4, Google Ads, Meta
-│   │       └── scrapers/           # Competitor data
+│   │       ├── pipelines/          # GA4, Google Ads, Meta Ads
+│   │       └── scrapers/           # 9 scraper modules
+│   │           ├── apartments_com.py
+│   │           ├── apify_apartments.py
+│   │           ├── brand_intelligence.py
+│   │           ├── coordinator.py
+│   │           ├── discovery.py
+│   │           ├── google_places.py
+│   │           ├── website_intelligence.py
+│   │           └── yelp.py
 │   └── supabase/
-│       └── migrations/             # Database schema
+│       └── migrations/             # 10 migration files
+│           ├── 20251208000000_init_schema.sql
+│           ├── 20251209030000_forgestudio_reviewflow_schema.sql
+│           ├── 20251209040000_community_onboarding_schema.sql
+│           ├── 20251209050000_competitor_brand_intelligence.sql
+│           └── 20251210000000_reviewflow_multi_source.sql
 └── docs/                           # Planning documents
 ```
 
@@ -122,10 +149,11 @@ oneClick/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20+
 - Python 3.11+
 - Supabase project (with pgvector enabled)
 - OpenAI API key
+- Google Cloud project (for Veo 3 / Vertex AI)
 
 ### 1. Clone & Install
 
@@ -151,6 +179,17 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-key
 
 # OpenAI
 OPENAI_API_KEY=sk-...
+
+# Google Cloud (Vertex AI for Veo 3)
+GOOGLE_CLOUD_PROJECT_ID=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+
+# Review Platforms
+GOOGLE_PLACES_API_KEY=your-key
+YELP_FUSION_API_KEY=your-key
+
+# Data Engine
+DATA_ENGINE_URL=http://localhost:8000
 
 # Site URL
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
@@ -182,13 +221,19 @@ Key tables in the unified data model:
 |-------|---------|
 | `organizations` | Multi-tenant companies |
 | `properties` | Apartment communities |
+| `community_profiles` | Extended property data (amenities, pet policy, etc.) |
+| `community_contacts` | Multiple contacts per property |
 | `documents` | RAG knowledge base (pgvector embeddings) |
+| `knowledge_sources` | Track where knowledge came from |
 | `fact_marketing_performance` | Unified marketing metrics |
 | `leads` | Lead tracking and scoring |
 | `conversations` / `messages` | Chat history |
-| `content_drafts` | ForgeStudio generated content |
+| `content_drafts` / `forgestudio_assets` | Generated content & media |
 | `reviews` / `review_responses` | ReviewFlow data |
-| `competitor_snapshots` | MarketVision scraped data |
+| `review_platform_connections` | Google, Yelp, manual connections |
+| `competitors` / `competitor_snapshots` | MarketVision scraped data |
+| `competitor_brand_intelligence` | AI-analyzed brand positioning |
+| `competitor_content_chunks` | Vector embeddings for semantic search |
 
 ---
 
@@ -199,25 +244,94 @@ Key tables in the unified data model:
 POST /api/chat
 Body: { messages: Message[], propertyId: string, conversationId?: string }
 Response: { role: "assistant", content: string, conversationId: string }
+
+POST /api/lumaleasing/chat   // External widget endpoint
+Body: { message: string, propertyId: string, sessionId?: string }
 ```
 
-### ForgeStudio Content Generation
+### ForgeStudio Content & Video Generation
 ```typescript
 POST /api/forgestudio/generate
 Body: { propertyId: string, contentType: "social" | "blog", topic: string }
-Response: { drafts: ContentDraft[] }
+
+POST /api/forgestudio/assets/generate
+Body: {
+  propertyId: string,
+  generationType: "text-to-video" | "image-to-video" | "image",
+  prompt: string,
+  style: "luxury" | "modern" | "natural" | "vibrant" | "cozy" | "professional",
+  aspectRatio: "16:9" | "9:16",
+  videoDuration: 4 | 6 | 8,
+  includeAudio: boolean  // Veo 3 synchronized audio
+}
+```
+
+### LeadPulse Scoring
+```typescript
+POST /api/leadpulse/score
+Body: { leadId: string }
+Response: {
+  totalScore: number,
+  engagementScore: number,
+  timingScore: number,
+  sourceScore: number,
+  factors: { factor: string, impact: string, type: "positive" | "negative" }[]
+}
+
+GET /api/leadpulse/insights?propertyId=...
+Response: { insights: LeadInsight[], recommendations: string[] }
 ```
 
 ### MarketVision Competitors
 ```typescript
 GET /api/marketvision/competitors?propertyId=...
 Response: { competitors: Competitor[], lastUpdated: string }
+
+POST /api/marketvision/brand-intelligence
+Body: { competitorId: string }
+Response: { jobId: string }  // Async job
+
+GET /api/marketvision/brand-intelligence/{competitorId}
+Response: {
+  brand_voice: string,
+  unique_selling_points: string[],
+  highlighted_amenities: string[],
+  active_specials: string[]
+}
 ```
 
-### ReviewFlow
+### ReviewFlow Multi-Source
 ```typescript
+POST /api/reviewflow/sync
+Body: { propertyId: string, platform: "google" | "yelp", method?: "api" | "scraper" }
+
+POST /api/reviewflow/connections
+Body: {
+  propertyId: string,
+  platform: "google" | "yelp" | "manual",
+  placeId?: string,        // Google
+  yelpBusinessId?: string  // Yelp
+}
+
 GET /api/reviewflow/reviews?propertyId=...&status=pending
 Response: { reviews: Review[], stats: ReviewStats }
+
+POST /api/reviewflow/respond
+Body: { reviewId: string, response: string, tone?: string }
+```
+
+### Community Intelligence
+```typescript
+POST /api/onboarding/scrape-website
+Body: { propertyId: string, websiteUrl: string }
+Response: {
+  extracted: { amenities: string[], pet_policy: object, contact_phone: string },
+  documentsCreated: number  // RAG chunks added
+}
+
+GET /api/community/profile?propertyId=...
+GET /api/community/contacts?propertyId=...
+GET /api/community/knowledge-sources?propertyId=...
 ```
 
 ---
@@ -243,11 +357,12 @@ npm run build
 ```bash
 cd services/data-engine
 python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+.\venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Mac/Linux
 pip install -r requirements.txt
 
 # Run API server
-uvicorn main:app --reload
+uvicorn main:app --reload --port 8000
 
 # Run ETL pipelines
 python run_pipelines.py
@@ -263,29 +378,34 @@ python run_pipelines.py
 | Content Output | 50-75/month | **300+/month** |
 | Properties per AM | 10-12 | **30-40** |
 | Campaign Optimization | Business hours | **24/7/365** |
+| Review Response Time | Days | **< 1 hour** |
 
 ---
 
 ## 🗺️ Roadmap
 
-### Q1 2026 — Foundation
+### ✅ Q4 2025 — Foundation (Complete)
 - [x] Data Lake infrastructure
 - [x] LumaLeasing RAG chatbot
 - [x] MultiChannel BI dashboard
 - [x] ForgeStudio content generation
+- [x] Community onboarding wizard
 
-### Q2 2026 — Conversion
+### ✅ Q1 2026 — Intelligence (Complete)
 - [x] MarketVision competitor scraping
-- [x] ReviewFlow sentiment analysis
-- [ ] LeadPulse ML scoring
-- [ ] TourSpark automation
+- [x] Brand Intelligence AI analysis
+- [x] ReviewFlow multi-source (Google, Yelp)
+- [x] LeadPulse ML scoring
+- [x] ForgeStudio Veo 3 video generation
+- [x] Website Intelligence scraping
 
-### Q3 2026 — Scale
+### 🔨 Q2 2026 — Scale (In Progress)
+- [ ] TourSpark automation sequences
 - [ ] SocialPilot auto-posting
 - [ ] AdForge ad generation
 - [ ] SearchBoost SEO automation
 
-### Q4 2026 — Optimization
+### 📋 Q3-Q4 2026 — Optimization
 - [ ] ChurnSignal retention prediction
 - [ ] TrueSource attribution
 - [ ] Full autonomous operations
@@ -298,6 +418,9 @@ python run_pipelines.py
 - [Product Tech Specs](./Product_Tech_Specs.md)
 - [Progress Report](./Progress_Analysis_Report.md)
 - [Roadmap & RICE Analysis](./P11_Product_Roadmap_RICE_Analysis.md)
+- [ForgeStudio Veo 3 Update](./p11-platform/apps/web/FORGESTUDIO_VEO3_UPDATE.md)
+- [ReviewFlow Multi-Source](./p11-platform/apps/web/REVIEWFLOW_MULTI_SOURCE.md)
+- [Community Onboarding Plan](./p11-platform/Community_Onboarding_Enhancement_Plan.md)
 
 ---
 
@@ -324,5 +447,3 @@ Proprietary — P11 Creative © 2025
 *The Autonomous Agency starts now.*
 
 </div>
-
-

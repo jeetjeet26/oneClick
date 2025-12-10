@@ -20,10 +20,26 @@ app = FastAPI(
     description="ETL pipelines for marketing data ingestion and competitive intelligence scraping"
 )
 
-# CORS for local development
+# CORS configuration for development and production
+CORS_ORIGINS = [
+    "http://localhost:3000",  # Local development
+    "http://127.0.0.1:3000",
+]
+
+# Add production domains from environment
+if os.environ.get('WEB_APP_URL'):
+    CORS_ORIGINS.append(os.environ.get('WEB_APP_URL'))
+if os.environ.get('NEXT_PUBLIC_SITE_URL'):
+    CORS_ORIGINS.append(os.environ.get('NEXT_PUBLIC_SITE_URL'))
+
+# Add common Heroku patterns
+heroku_app_name = os.environ.get('HEROKU_APP_NAME')
+if heroku_app_name:
+    CORS_ORIGINS.append(f"https://{heroku_app_name}.herokuapp.com")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1188,6 +1204,369 @@ def get_website_scraper_status():
             "Preferred over apartments.com for accurate pricing",
             "Works with most apartment community websites",
             "Uses Playwright fallback for bot-protected sites"
+        ]
+    }
+
+
+# =============================================================================
+# REVIEWFLOW AI - Review Scraping Endpoints
+# =============================================================================
+
+class GoogleReviewsRequest(BaseModel):
+    place_id: str
+    max_reviews: int = 100
+
+
+class GoogleReviewsSearchRequest(BaseModel):
+    property_name: str
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class YelpReviewsRequest(BaseModel):
+    business_id: str
+
+
+class YelpReviewsSearchRequest(BaseModel):
+    property_name: str
+    city: str
+    state: Optional[str] = ""
+
+
+class YelpUrlRequest(BaseModel):
+    url: str
+
+
+@app.post('/scraper/google-reviews')
+async def scrape_google_reviews(request: GoogleReviewsRequest):
+    """
+    Fetch reviews from Google Places API for a specific Place ID.
+    
+    Uses existing GooglePlacesScraper with enhanced review extraction.
+    Returns up to 5 reviews per request (Google API limitation).
+    
+    Args:
+        place_id: Google Place ID (e.g., ChIJ...)
+        max_reviews: Maximum reviews to return (capped by API)
+    """
+    try:
+        from scrapers.google_places import GooglePlacesScraper
+        
+        api_key = os.environ.get('GOOGLE_MAPS_API_KEY')
+        if not api_key:
+            return {
+                'success': False,
+                'error': 'Google Maps API key not configured',
+                'reviews': []
+            }
+        
+        scraper = GooglePlacesScraper(api_key=api_key)
+        reviews = scraper.get_place_reviews(
+            place_id=request.place_id,
+            max_reviews=request.max_reviews
+        )
+        
+        return {
+            'success': True,
+            'place_id': request.place_id,
+            'reviews': [r.to_dict() for r in reviews],
+            'reviews_fetched': len(reviews),
+            'note': 'Google Places API returns up to 5 reviews per request'
+        }
+        
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+    except Exception as e:
+        logger.error(f"Google reviews scraping error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+
+
+@app.post('/scraper/google-reviews/search')
+async def search_and_scrape_google_reviews(request: GoogleReviewsSearchRequest):
+    """
+    Search for a property on Google and fetch its reviews.
+    
+    Useful when you don't have the Place ID - searches by name and address.
+    
+    Args:
+        property_name: Name of the property
+        address: Street address
+        lat: Optional latitude for better matching
+        lng: Optional longitude for better matching
+    """
+    try:
+        from scrapers.google_places import GooglePlacesScraper
+        
+        api_key = os.environ.get('GOOGLE_MAPS_API_KEY')
+        if not api_key:
+            return {
+                'success': False,
+                'error': 'Google Maps API key not configured',
+                'reviews': []
+            }
+        
+        scraper = GooglePlacesScraper(api_key=api_key)
+        result = scraper.get_reviews_for_property(
+            property_name=request.property_name,
+            address=request.address,
+            lat=request.lat,
+            lng=request.lng
+        )
+        
+        return result
+        
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+    except Exception as e:
+        logger.error(f"Google reviews search error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+
+
+@app.post('/scraper/yelp-reviews')
+async def scrape_yelp_reviews(request: YelpReviewsRequest):
+    """
+    Fetch reviews from Yelp Fusion API for a specific business.
+    
+    ⚠️ IMPORTANT: Yelp API returns only 3 most recent reviews.
+    This is an API limitation, not a bug.
+    
+    Args:
+        business_id: Yelp business ID (e.g., "the-domain-at-wills-crossing-austin")
+    """
+    try:
+        from scrapers.yelp import YelpFusionClient, is_yelp_configured
+        
+        if not is_yelp_configured():
+            return {
+                'success': False,
+                'error': 'Yelp API key not configured. Set YELP_FUSION_API_KEY env var.',
+                'reviews': []
+            }
+        
+        client = YelpFusionClient()
+        
+        # Get business details first
+        business = client.get_business(request.business_id)
+        if not business:
+            return {
+                'success': False,
+                'error': f'Business not found: {request.business_id}',
+                'reviews': []
+            }
+        
+        # Get reviews
+        reviews = client.get_business_reviews(request.business_id)
+        
+        return {
+            'success': True,
+            'business_id': request.business_id,
+            'business_name': business.name,
+            'business_rating': business.rating,
+            'total_reviews': business.review_count,
+            'reviews': [r.to_dict() for r in reviews],
+            'reviews_fetched': len(reviews),
+            'note': 'Yelp API returns only 3 most recent reviews per business'
+        }
+        
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+    except Exception as e:
+        logger.error(f"Yelp reviews scraping error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+
+
+@app.post('/scraper/yelp-reviews/search')
+async def search_and_scrape_yelp_reviews(request: YelpReviewsSearchRequest):
+    """
+    Search for a property on Yelp and fetch its reviews.
+    
+    Useful when you don't have the Yelp business ID.
+    
+    Args:
+        property_name: Name of the property
+        city: City name
+        state: State (optional)
+    """
+    try:
+        from scrapers.yelp import YelpFusionClient, is_yelp_configured
+        
+        if not is_yelp_configured():
+            return {
+                'success': False,
+                'error': 'Yelp API key not configured. Set YELP_FUSION_API_KEY env var.',
+                'reviews': []
+            }
+        
+        client = YelpFusionClient()
+        result = client.get_reviews_for_property(
+            property_name=request.property_name,
+            city=request.city,
+            state=request.state or ""
+        )
+        
+        return result
+        
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+    except Exception as e:
+        logger.error(f"Yelp reviews search error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+
+
+@app.post('/scraper/yelp-reviews/from-url')
+async def scrape_yelp_reviews_from_url(request: YelpUrlRequest):
+    """
+    Extract business ID from Yelp URL and fetch reviews.
+    
+    Accepts URLs like:
+    - https://www.yelp.com/biz/the-domain-at-wills-crossing-austin
+    
+    Args:
+        url: Yelp business URL
+    """
+    try:
+        from scrapers.yelp import YelpFusionClient, is_yelp_configured
+        
+        if not is_yelp_configured():
+            return {
+                'success': False,
+                'error': 'Yelp API key not configured. Set YELP_FUSION_API_KEY env var.',
+                'reviews': []
+            }
+        
+        client = YelpFusionClient()
+        
+        # Extract business ID from URL
+        business_id = client.extract_business_id_from_url(request.url)
+        if not business_id:
+            return {
+                'success': False,
+                'error': 'Could not extract business ID from URL. Expected format: yelp.com/biz/business-name',
+                'reviews': []
+            }
+        
+        # Get business details
+        business = client.get_business(business_id)
+        if not business:
+            return {
+                'success': False,
+                'error': f'Business not found: {business_id}',
+                'reviews': []
+            }
+        
+        # Get reviews
+        reviews = client.get_business_reviews(business_id)
+        
+        return {
+            'success': True,
+            'business_id': business_id,
+            'business_name': business.name,
+            'business_url': business.url,
+            'business_rating': business.rating,
+            'total_reviews': business.review_count,
+            'reviews': [r.to_dict() for r in reviews],
+            'reviews_fetched': len(reviews),
+            'note': 'Yelp API returns only 3 most recent reviews per business'
+        }
+        
+    except ValueError as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+    except Exception as e:
+        logger.error(f"Yelp URL reviews error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'reviews': []
+        }
+
+
+@app.get('/scraper/reviews/status')
+def get_reviews_scraper_status():
+    """
+    Get review scraping configuration and status.
+    
+    Shows which review platforms are configured and available.
+    """
+    from scrapers.yelp import is_yelp_configured
+    
+    google_configured = bool(os.environ.get('GOOGLE_MAPS_API_KEY'))
+    yelp_configured = is_yelp_configured()
+    
+    return {
+        "google": {
+            "configured": google_configured,
+            "status": "ready" if google_configured else "GOOGLE_MAPS_API_KEY required",
+            "reviews_per_request": 5,
+            "features": {
+                "fetch_by_place_id": google_configured,
+                "search_by_name": google_configured,
+                "review_analysis": True
+            },
+            "limitations": [
+                "Returns up to 5 reviews per request",
+                "No pagination available in standard API",
+                "Advanced reviews require Places API (New) paid tier"
+            ]
+        },
+        "yelp": {
+            "configured": yelp_configured,
+            "status": "ready" if yelp_configured else "YELP_FUSION_API_KEY required",
+            "reviews_per_request": 3,
+            "features": {
+                "fetch_by_business_id": yelp_configured,
+                "search_by_name": yelp_configured,
+                "extract_from_url": yelp_configured,
+                "review_analysis": True
+            },
+            "limitations": [
+                "Returns ONLY 3 most recent reviews (hard API limit)",
+                "No historical review access",
+                "Full review data requires Business Owner API access"
+            ]
+        },
+        "supported_platforms": ["google", "yelp"],
+        "coming_soon": ["facebook", "apartments_com"],
+        "notes": [
+            "All reviews are automatically analyzed by ReviewFlow AI",
+            "Negative reviews trigger automatic ticket creation",
+            "AI-generated responses are created for pending reviews"
         ]
     }
 

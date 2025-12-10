@@ -1,17 +1,47 @@
 """
-Google Places Competitor Discovery
+Google Places Competitor Discovery & Review Extraction
 Uses Google Maps Places API to find nearby apartment communities
+and extract reviews for ReviewFlow AI integration
+
+Updated Dec 2025: Added review extraction capabilities
 """
 
 import os
 import logging
 from typing import List, Optional, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 import googlemaps
 from scrapers.base import ScrapedProperty, ScrapedUnit
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GoogleReview:
+    """Parsed review from Google Places API"""
+    platform_review_id: str
+    reviewer_name: str
+    reviewer_avatar_url: Optional[str]
+    rating: int
+    review_text: str
+    review_date: str  # ISO format
+    language: str = 'en'
+    relative_time: Optional[str] = None  # e.g., "2 weeks ago"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'platform_review_id': self.platform_review_id,
+            'reviewer_name': self.reviewer_name,
+            'reviewer_avatar_url': self.reviewer_avatar_url,
+            'rating': self.rating,
+            'review_text': self.review_text,
+            'review_date': self.review_date,
+            'language': self.language,
+            'relative_time': self.relative_time,
+            'platform': 'google'
+        }
 
 
 @dataclass
@@ -383,4 +413,183 @@ class GooglePlacesScraper:
                 continue
         
         return properties
+
+    # =========================================================================
+    # REVIEWFLOW AI - Review Extraction Methods
+    # =========================================================================
+    
+    def get_place_reviews(
+        self,
+        place_id: str,
+        max_reviews: int = 100
+    ) -> List[GoogleReview]:
+        """
+        Fetch reviews for a Google Place
+        
+        Uses Places API (New) which returns up to 5 reviews per request.
+        For more reviews, multiple API calls may be needed (pagination not 
+        available in standard API - requires Places API advanced tier).
+        
+        Args:
+            place_id: Google Place ID (e.g., ChIJ...)
+            max_reviews: Maximum reviews to return (limited by API)
+            
+        Returns:
+            List of GoogleReview objects
+        """
+        try:
+            logger.info(f"Fetching reviews for place: {place_id}")
+            
+            # Use the place details endpoint with reviews field
+            result = self.client.place(
+                place_id=place_id,
+                fields=[
+                    'name',
+                    'reviews',  # This is the key field
+                    'user_ratings_total',
+                    'rating'
+                ]
+            )
+            
+            place_data = result.get('result', {})
+            raw_reviews = place_data.get('reviews', [])
+            
+            if not raw_reviews:
+                logger.info(f"No reviews found for place {place_id}")
+                return []
+            
+            reviews = []
+            for review in raw_reviews[:max_reviews]:
+                try:
+                    parsed = self._parse_review(review, place_id)
+                    if parsed:
+                        reviews.append(parsed)
+                except Exception as e:
+                    logger.error(f"Error parsing review: {e}")
+                    continue
+            
+            logger.info(f"Fetched {len(reviews)} reviews for place {place_id}")
+            return reviews
+            
+        except Exception as e:
+            logger.error(f"Error fetching reviews for {place_id}: {e}")
+            return []
+    
+    def _parse_review(self, review: Dict[str, Any], place_id: str) -> Optional[GoogleReview]:
+        """
+        Parse a raw review from Google Places API
+        
+        API Response structure:
+        {
+            "author_name": "John Doe",
+            "author_url": "https://...",
+            "profile_photo_url": "https://...",
+            "rating": 5,
+            "relative_time_description": "2 weeks ago",
+            "text": "Great place!",
+            "time": 1701234567  # Unix timestamp
+            "language": "en"
+        }
+        """
+        try:
+            # Generate unique ID from place_id + author + timestamp
+            timestamp = review.get('time', 0)
+            author = review.get('author_name', 'Anonymous')
+            review_id = f"google-{place_id}-{timestamp}-{hash(author) % 10000}"
+            
+            # Convert Unix timestamp to ISO date
+            review_date = datetime.utcfromtimestamp(timestamp).isoformat() if timestamp else datetime.utcnow().isoformat()
+            
+            return GoogleReview(
+                platform_review_id=review_id,
+                reviewer_name=author,
+                reviewer_avatar_url=review.get('profile_photo_url'),
+                rating=review.get('rating', 0),
+                review_text=review.get('text', ''),
+                review_date=review_date,
+                language=review.get('language', 'en'),
+                relative_time=review.get('relative_time_description')
+            )
+        except Exception as e:
+            logger.error(f"Error parsing review data: {e}")
+            return None
+    
+    def get_reviews_for_property(
+        self,
+        property_name: str,
+        address: str,
+        lat: Optional[float] = None,
+        lng: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Find a property on Google and fetch its reviews
+        
+        Searches for the property by name/address, finds the Place ID,
+        then fetches reviews.
+        
+        Args:
+            property_name: Name of the property/business
+            address: Street address
+            lat: Optional latitude for better matching
+            lng: Optional longitude for better matching
+            
+        Returns:
+            Dict with place info and reviews
+        """
+        try:
+            # Search for the place
+            search_query = f"{property_name} {address}"
+            logger.info(f"Searching for property: {search_query}")
+            
+            if lat and lng:
+                results = self.client.places(
+                    query=search_query,
+                    location=(lat, lng),
+                    radius=1000
+                )
+            else:
+                results = self.client.places(query=search_query)
+            
+            places = results.get('results', [])
+            
+            if not places:
+                return {
+                    'success': False,
+                    'error': 'Property not found on Google',
+                    'reviews': []
+                }
+            
+            # Use the first (best) match
+            best_match = places[0]
+            place_id = best_match.get('place_id')
+            
+            if not place_id:
+                return {
+                    'success': False,
+                    'error': 'Could not get Place ID',
+                    'reviews': []
+                }
+            
+            # Fetch reviews
+            reviews = self.get_place_reviews(place_id)
+            
+            return {
+                'success': True,
+                'place_id': place_id,
+                'place_name': best_match.get('name'),
+                'place_address': best_match.get('formatted_address') or best_match.get('vicinity'),
+                'place_rating': best_match.get('rating'),
+                'total_reviews': best_match.get('user_ratings_total', 0),
+                'reviews': [r.to_dict() for r in reviews],
+                'reviews_fetched': len(reviews),
+                'note': 'Google Places API returns up to 5 reviews per request'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting reviews for property: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'reviews': []
+            }
 

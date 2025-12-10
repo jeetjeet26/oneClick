@@ -6,15 +6,23 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Google Places API - Fetch reviews
-async function fetchGoogleReviews(placeId: string, apiKey: string): Promise<Array<{
+// Data Engine URL for scraping operations
+const DATA_ENGINE_URL = process.env.DATA_ENGINE_URL || 'http://localhost:8000'
+
+// Review type definition
+interface ReviewData {
   reviewer_name: string
   rating: number
   review_text: string
   review_date: string
   platform_review_id: string
   reviewer_avatar_url: string | null
-}>> {
+}
+
+// ============================================================================
+// GOOGLE PLACES API - Direct API Method
+// ============================================================================
+async function fetchGoogleReviewsViaAPI(placeId: string, apiKey?: string): Promise<ReviewData[]> {
   const GOOGLE_API_KEY = apiKey || process.env.GOOGLE_PLACES_API_KEY
   
   if (!GOOGLE_API_KEY) {
@@ -60,11 +68,142 @@ async function fetchGoogleReviews(placeId: string, apiKey: string): Promise<Arra
   }))
 }
 
-// Sync reviews from a connected platform
+// ============================================================================
+// GOOGLE REVIEWS VIA DATA-ENGINE SCRAPER
+// ============================================================================
+async function fetchGoogleReviewsViaScraper(placeId: string): Promise<ReviewData[]> {
+  try {
+    const response = await fetch(`${DATA_ENGINE_URL}/scraper/google-reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ place_id: placeId, max_reviews: 100 })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || `Scraper error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    if (!data.success || !data.reviews) {
+      throw new Error(data.error || 'No reviews returned from scraper')
+    }
+
+    return data.reviews.map((review: {
+      platform_review_id: string
+      reviewer_name: string
+      reviewer_avatar_url?: string
+      rating: number
+      review_text: string
+      review_date: string
+    }) => ({
+      platform_review_id: review.platform_review_id,
+      reviewer_name: review.reviewer_name || 'Anonymous',
+      reviewer_avatar_url: review.reviewer_avatar_url || null,
+      rating: review.rating || 0,
+      review_text: review.review_text || '',
+      review_date: review.review_date || new Date().toISOString()
+    }))
+  } catch (error) {
+    console.error('Google scraper error:', error)
+    throw error
+  }
+}
+
+// ============================================================================
+// YELP REVIEWS VIA DATA-ENGINE
+// ============================================================================
+async function fetchYelpReviews(businessId: string): Promise<ReviewData[]> {
+  try {
+    const response = await fetch(`${DATA_ENGINE_URL}/scraper/yelp-reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ business_id: businessId })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || `Yelp API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Yelp API request failed')
+    }
+
+    return data.reviews.map((review: {
+      platform_review_id: string
+      reviewer_name: string
+      reviewer_avatar_url?: string
+      rating: number
+      review_text: string
+      review_date: string
+    }) => ({
+      platform_review_id: review.platform_review_id,
+      reviewer_name: review.reviewer_name || 'Anonymous',
+      reviewer_avatar_url: review.reviewer_avatar_url || null,
+      rating: review.rating || 0,
+      review_text: review.review_text || '',
+      review_date: review.review_date || new Date().toISOString()
+    }))
+  } catch (error) {
+    console.error('Yelp API error:', error)
+    throw error
+  }
+}
+
+// ============================================================================
+// YELP REVIEWS VIA URL (extracts business ID)
+// ============================================================================
+async function fetchYelpReviewsFromUrl(yelpUrl: string): Promise<ReviewData[]> {
+  try {
+    const response = await fetch(`${DATA_ENGINE_URL}/scraper/yelp-reviews/from-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: yelpUrl })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || `Yelp URL error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Yelp URL request failed')
+    }
+
+    return data.reviews.map((review: {
+      platform_review_id: string
+      reviewer_name: string
+      reviewer_avatar_url?: string
+      rating: number
+      review_text: string
+      review_date: string
+    }) => ({
+      platform_review_id: review.platform_review_id,
+      reviewer_name: review.reviewer_name || 'Anonymous',
+      reviewer_avatar_url: review.reviewer_avatar_url || null,
+      rating: review.rating || 0,
+      review_text: review.review_text || '',
+      review_date: review.review_date || new Date().toISOString()
+    }))
+  } catch (error) {
+    console.error('Yelp URL error:', error)
+    throw error
+  }
+}
+
+// ============================================================================
+// MAIN SYNC ENDPOINT
+// ============================================================================
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { propertyId, platform, connectionId } = body
+    const { propertyId, platform, connectionId, method } = body
 
     if (!propertyId || !platform) {
       return NextResponse.json(
@@ -94,28 +233,55 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let reviews: Array<{
-      reviewer_name: string
-      rating: number
-      review_text: string
-      review_date: string
-      platform_review_id: string
-      reviewer_avatar_url: string | null
-    }> = []
+    // Determine which method to use
+    const connectionType = method || connection.connection_type || 'api'
+    
+    let reviews: ReviewData[] = []
+    let syncMethod = connectionType
     
     try {
       switch (platform) {
         case 'google':
-          if (!connection.place_id) {
-            throw new Error('Google Place ID not configured')
+          if (connectionType === 'scraper' || connectionType === 'both') {
+            // Try scraper first if configured
+            if (connection.place_id) {
+              try {
+                reviews = await fetchGoogleReviewsViaScraper(connection.place_id)
+                syncMethod = 'scraper'
+              } catch (scraperError) {
+                console.warn('Google scraper failed, falling back to API:', scraperError)
+                // Fall back to API if scraper fails and connection type is 'both'
+                if (connectionType === 'both' && connection.place_id) {
+                  reviews = await fetchGoogleReviewsViaAPI(connection.place_id, connection.api_key)
+                  syncMethod = 'api'
+                } else {
+                  throw scraperError
+                }
+              }
+            } else {
+              throw new Error('Google Place ID not configured for scraping')
+            }
+          } else {
+            // Use API method (default)
+            if (!connection.place_id) {
+              throw new Error('Google Place ID not configured')
+            }
+            reviews = await fetchGoogleReviewsViaAPI(connection.place_id, connection.api_key)
+            syncMethod = 'api'
           }
-          reviews = await fetchGoogleReviews(connection.place_id, connection.api_key)
           break
           
-        // Add other platforms here as needed
         case 'yelp':
-          // Yelp API implementation would go here
-          throw new Error('Yelp sync not yet implemented')
+          // Check which identifier we have
+          if (connection.yelp_business_id) {
+            reviews = await fetchYelpReviews(connection.yelp_business_id)
+          } else if (connection.yelp_business_url) {
+            reviews = await fetchYelpReviewsFromUrl(connection.yelp_business_url)
+          } else {
+            throw new Error('Yelp Business ID or URL not configured. Please provide either yelp_business_id or yelp_business_url.')
+          }
+          syncMethod = 'api' // Yelp always uses API via data-engine
+          break
           
         default:
           throw new Error(`Unsupported platform: ${platform}`)
@@ -149,7 +315,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         imported: 0,
-        message: 'No reviews found'
+        message: 'No reviews found',
+        syncMethod
       })
     }
 
@@ -180,13 +347,15 @@ export async function POST(request: NextRequest) {
       throw new Error(upsertError.message)
     }
 
-    // Update connection last sync time
+    // Update connection stats
     await supabase
       .from('review_platform_connections')
       .update({
         last_sync_at: new Date().toISOString(),
         error_count: 0,
         last_error: null,
+        total_reviews_synced: (connection.total_reviews_synced || 0) + (upserted?.length || 0),
+        last_review_date: reviews.length > 0 ? reviews[0].review_date : connection.last_review_date,
         updated_at: new Date().toISOString()
       })
       .eq('id', connection.id)
@@ -198,10 +367,18 @@ export async function POST(request: NextRequest) {
       analyzeReviewsBatch(newReviews.map(r => r.id))
     }
 
+    // Add limitation note for Yelp
+    let note: string | undefined
+    if (platform === 'yelp') {
+      note = 'Yelp API returns only 3 most recent reviews per business'
+    }
+
     return NextResponse.json({
       success: true,
       imported: upserted?.length || 0,
-      newReviews: newReviews.length
+      newReviews: newReviews.length,
+      syncMethod,
+      note
     })
 
   } catch (error) {
@@ -227,4 +404,3 @@ async function analyzeReviewsBatch(reviewIds: string[]) {
     }
   }
 }
-

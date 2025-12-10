@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { 
   X, Upload, Loader2, FileText, Globe, Check, AlertCircle,
-  ChevronRight
+  ChevronRight, ExternalLink, Info, Search, RefreshCw
 } from 'lucide-react'
 import { PlatformIcon } from './PlatformIcon'
 
@@ -13,7 +13,7 @@ interface ImportReviewsModalProps {
   onImported: () => void
 }
 
-type ImportMethod = 'manual' | 'csv' | 'google' | 'yelp'
+type ImportMethod = 'manual' | 'csv' | 'google-api' | 'google-scraper' | 'yelp'
 type ImportStep = 'select' | 'configure' | 'importing' | 'complete'
 
 interface ManualReview {
@@ -25,10 +25,10 @@ interface ManualReview {
 }
 
 const PLATFORMS = [
-  { id: 'google', name: 'Google', icon: Globe, color: 'text-blue-500' },
-  { id: 'yelp', name: 'Yelp', icon: Globe, color: 'text-red-500' },
-  { id: 'apartments_com', name: 'Apartments.com', icon: Globe, color: 'text-green-500' },
-  { id: 'facebook', name: 'Facebook', icon: Globe, color: 'text-blue-600' },
+  { id: 'google', name: 'Google', color: 'text-blue-500' },
+  { id: 'yelp', name: 'Yelp', color: 'text-red-500' },
+  { id: 'apartments_com', name: 'Apartments.com', color: 'text-green-500' },
+  { id: 'facebook', name: 'Facebook', color: 'text-blue-600' },
 ]
 
 export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportReviewsModalProps) {
@@ -37,6 +37,7 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [importedCount, setImportedCount] = useState(0)
+  const [limitationNote, setLimitationNote] = useState<string | null>(null)
   
   // Manual entry
   const [manualReview, setManualReview] = useState<ManualReview>({
@@ -51,12 +52,23 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
   const [csvFile, setCsvFile] = useState<File | null>(null)
   
   // Google connection
+  const [googleInputMethod, setGoogleInputMethod] = useState<'search' | 'placeid'>('search')
   const [googlePlaceId, setGooglePlaceId] = useState('')
-  const [googleConnected, setGoogleConnected] = useState(false)
+  const [googlePropertyName, setGooglePropertyName] = useState('')
+  const [googleAddress, setGoogleAddress] = useState('')
+  const [googleConnectionType, setGoogleConnectionType] = useState<'api' | 'scraper'>('api')
+  const [searchingGoogle, setSearchingGoogle] = useState(false)
+  const [foundPlaceId, setFoundPlaceId] = useState<string | null>(null)
+  const [foundPlaceName, setFoundPlaceName] = useState<string | null>(null)
+  
+  // Yelp connection
+  const [yelpInput, setYelpInput] = useState('')
+  const [yelpInputType, setYelpInputType] = useState<'url' | 'id'>('url')
 
   const handleMethodSelect = (selectedMethod: ImportMethod) => {
     setMethod(selectedMethod)
     setStep('configure')
+    setError(null)
   }
 
   const handleManualSubmit = async () => {
@@ -139,9 +151,53 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
     }
   }
 
+  const handleGoogleSearch = async () => {
+    if (!googlePropertyName.trim() || !googleAddress.trim()) {
+      setError('Property name and address are required')
+      return
+    }
+
+    setSearchingGoogle(true)
+    setError(null)
+    setFoundPlaceId(null)
+    setFoundPlaceName(null)
+
+    try {
+      const dataEngineUrl = process.env.NEXT_PUBLIC_DATA_ENGINE_URL || 'http://localhost:8000'
+      const res = await fetch(`${dataEngineUrl}/scraper/google-reviews/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_name: googlePropertyName,
+          address: googleAddress
+        })
+      })
+
+      const data = await res.json()
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Property not found on Google')
+      }
+
+      setFoundPlaceId(data.place_id)
+      setFoundPlaceName(data.place_name)
+      setGooglePlaceId(data.place_id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed')
+    } finally {
+      setSearchingGoogle(false)
+    }
+  }
+
   const handleGoogleConnect = async () => {
-    if (!googlePlaceId.trim()) {
-      setError('Google Place ID is required')
+    const placeIdToUse = googleInputMethod === 'search' ? foundPlaceId : googlePlaceId
+
+    if (!placeIdToUse?.trim()) {
+      if (googleInputMethod === 'search') {
+        setError('Please search for your property first')
+      } else {
+        setError('Google Place ID is required')
+      }
       return
     }
 
@@ -156,15 +212,16 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
         body: JSON.stringify({
           propertyId,
           platform: 'google',
-          placeId: googlePlaceId
+          placeId: placeIdToUse,
+          connectionType: googleConnectionType,
+          syncFrequency: 'hourly'
         })
       })
 
       if (!res.ok) {
-        throw new Error('Failed to connect Google')
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to connect Google')
       }
-
-      setGoogleConnected(true)
 
       // Trigger initial sync
       setStep('importing')
@@ -173,18 +230,91 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           propertyId,
-          platform: 'google'
+          platform: 'google',
+          method: googleConnectionType
         })
       })
 
+      const syncData = await syncRes.json()
+      
       if (syncRes.ok) {
-        const syncData = await syncRes.json()
         setImportedCount(syncData.imported || 0)
+        if (syncData.note) {
+          setLimitationNote(syncData.note)
+        }
+      } else {
+        throw new Error(syncData.error || 'Sync failed')
       }
 
       setStep('complete')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed')
+      setStep('configure')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleYelpConnect = async () => {
+    if (!yelpInput.trim()) {
+      setError(yelpInputType === 'url' ? 'Yelp URL is required' : 'Yelp Business ID is required')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Create connection with the appropriate field
+      const connectionBody: Record<string, unknown> = {
+        propertyId,
+        platform: 'yelp',
+        connectionType: 'api',
+        syncFrequency: 'daily',
+        limitationNote: 'Yelp API returns only 3 most recent reviews per business'
+      }
+
+      if (yelpInputType === 'url') {
+        connectionBody.yelpBusinessUrl = yelpInput
+      } else {
+        connectionBody.yelpBusinessId = yelpInput
+      }
+
+      const res = await fetch('/api/reviewflow/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(connectionBody)
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to connect Yelp')
+      }
+
+      // Trigger initial sync
+      setStep('importing')
+      const syncRes = await fetch('/api/reviewflow/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propertyId,
+          platform: 'yelp'
+        })
+      })
+
+      const syncData = await syncRes.json()
+      
+      if (syncRes.ok) {
+        setImportedCount(syncData.imported || 0)
+        setLimitationNote('Yelp API returns only 3 most recent reviews. Your business may have more reviews on Yelp.')
+      } else {
+        throw new Error(syncData.error || 'Sync failed')
+      }
+
+      setStep('complete')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection failed')
+      setStep('configure')
     } finally {
       setLoading(false)
     }
@@ -219,22 +349,24 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
               </button>
               
               <button
-                onClick={() => handleMethodSelect('google')}
+                onClick={() => handleMethodSelect('google-api')}
                 className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-rose-300 dark:hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all text-left group"
               >
                 <Globe className="w-8 h-8 text-blue-500 mb-3" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">Google Business</h3>
-                <p className="text-sm text-slate-500 mt-1">Connect & sync automatically</p>
+                <p className="text-sm text-slate-500 mt-1">Connect via Place ID</p>
               </button>
               
               <button
                 onClick={() => handleMethodSelect('yelp')}
-                className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-rose-300 dark:hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all text-left group opacity-50 cursor-not-allowed"
-                disabled
+                className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-rose-300 dark:hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all text-left group"
               >
                 <Globe className="w-8 h-8 text-red-500 mb-3" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">Yelp</h3>
-                <p className="text-sm text-slate-500 mt-1">Coming soon</p>
+                <p className="text-sm text-slate-500 mt-1">Connect via Business URL</p>
+                <span className="inline-block mt-2 text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                  Max 3 reviews
+                </span>
               </button>
             </div>
           </div>
@@ -245,7 +377,7 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
           return (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-4">
-                <button onClick={() => setStep('select')} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => { setStep('select'); setMethod(null) }} className="text-slate-400 hover:text-slate-600">
                   Import
                 </button>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -346,7 +478,7 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
           return (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-4">
-                <button onClick={() => setStep('select')} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => { setStep('select'); setMethod(null) }} className="text-slate-400 hover:text-slate-600">
                   Import
                 </button>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -412,58 +544,263 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
           )
         }
 
-        if (method === 'google') {
+        if (method === 'google-api' || method === 'google-scraper') {
           return (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-4">
-                <button onClick={() => setStep('select')} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => { setStep('select'); setMethod(null) }} className="text-slate-400 hover:text-slate-600">
                   Import
                 </button>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
                 <span className="text-slate-900 dark:text-white font-medium">Google Business</span>
               </div>
 
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
-                <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
-                  Connect Google Business Profile
-                </h4>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  Enter your Google Place ID to automatically sync reviews. You can find this in your Google Business Profile settings or by searching your business on Google Maps.
-                </p>
-              </div>
-
+              {/* Input Method Selection */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Google Place ID <span className="text-red-500">*</span>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  How would you like to connect?
                 </label>
-                <input
-                  type="text"
-                  value={googlePlaceId}
-                  onChange={(e) => setGooglePlaceId(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
-                  placeholder="ChIJ..."
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Looks like: ChIJN1t_tDeuEmsRUsoyG83frY4
-                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => { setGoogleInputMethod('search'); setFoundPlaceId(null); setFoundPlaceName(null) }}
+                    className={`p-3 border rounded-lg text-left transition-all ${
+                      googleInputMethod === 'search'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                      <Search className="w-4 h-4" />
+                      Search by Name
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">We&apos;ll find your property on Google</p>
+                  </button>
+                  <button
+                    onClick={() => setGoogleInputMethod('placeid')}
+                    className={`p-3 border rounded-lg text-left transition-all ${
+                      googleInputMethod === 'placeid'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                      <Globe className="w-4 h-4" />
+                      Enter Place ID
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">If you already have your Place ID</p>
+                  </button>
+                </div>
               </div>
 
-              {googleConnected && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg">
-                  <Check className="w-5 h-5" />
-                  Google Business connected successfully!
+              {/* Search by Name/Address */}
+              {googleInputMethod === 'search' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Property Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={googlePropertyName}
+                      onChange={(e) => { setGooglePropertyName(e.target.value); setFoundPlaceId(null) }}
+                      className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+                      placeholder="The Domain at Wills Crossing"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Address <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={googleAddress}
+                      onChange={(e) => { setGoogleAddress(e.target.value); setFoundPlaceId(null) }}
+                      className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+                      placeholder="1234 Main Street, Austin, TX 78701"
+                    />
+                  </div>
+
+                  {!foundPlaceId && (
+                    <button
+                      onClick={handleGoogleSearch}
+                      disabled={searchingGoogle || !googlePropertyName.trim() || !googleAddress.trim()}
+                      className="w-full py-2.5 border-2 border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {searchingGoogle ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Searching Google...</>
+                      ) : (
+                        <><Search className="w-4 h-4" /> Find Property on Google</>
+                      )}
+                    </button>
+                  )}
+
+                  {foundPlaceId && (
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-green-700 dark:text-green-300 mb-2">
+                        <Check className="w-5 h-5" />
+                        <span className="font-medium">Property Found!</span>
+                      </div>
+                      <p className="text-sm text-green-600 dark:text-green-400">
+                        <strong>{foundPlaceName}</strong>
+                      </p>
+                      <p className="text-xs text-green-500 mt-1 font-mono">
+                        Place ID: {foundPlaceId}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Direct Place ID Entry */}
+              {googleInputMethod === 'placeid' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Google Place ID <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={googlePlaceId}
+                    onChange={(e) => setGooglePlaceId(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 font-mono text-sm"
+                    placeholder="ChIJN1t_tDeuEmsRUsoyG83frY4"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Find it on <a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline inline-flex items-center gap-1">Place ID Finder <ExternalLink className="w-3 h-3" /></a>
+                  </p>
                 </div>
               )}
 
+              {/* Connection Type Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Sync Method
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setGoogleConnectionType('api')}
+                    className={`p-3 border rounded-lg text-left transition-all ${
+                      googleConnectionType === 'api'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white">API (Recommended)</div>
+                    <p className="text-xs text-slate-500 mt-1">Uses Google Places API</p>
+                  </button>
+                  <button
+                    onClick={() => setGoogleConnectionType('scraper')}
+                    className={`p-3 border rounded-lg text-left transition-all ${
+                      googleConnectionType === 'scraper'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white">Scraper</div>
+                    <p className="text-xs text-slate-500 mt-1">Alternative method (beta)</p>
+                  </button>
+                </div>
+              </div>
+
               <button
                 onClick={handleGoogleConnect}
-                disabled={loading || !googlePlaceId.trim()}
+                disabled={loading || (googleInputMethod === 'search' ? !foundPlaceId : !googlePlaceId.trim())}
                 className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</>
                 ) : (
-                  <>Connect & Sync Reviews</>
+                  <><RefreshCw className="w-4 h-4" /> Connect & Sync Reviews</>
+                )}
+              </button>
+            </div>
+          )
+        }
+
+        if (method === 'yelp') {
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <button onClick={() => { setStep('select'); setMethod(null) }} className="text-slate-400 hover:text-slate-600">
+                  Import
+                </button>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <span className="text-slate-900 dark:text-white font-medium">Yelp</span>
+              </div>
+
+              {/* Yelp Limitation Warning */}
+              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4 border border-amber-200 dark:border-amber-800">
+                <h4 className="font-medium text-amber-900 dark:text-amber-100 mb-2 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  Yelp API Limitation
+                </h4>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Yelp&apos;s API returns <strong>only the 3 most recent reviews</strong> per business. This is a Yelp restriction, not a bug. Your business may have more reviews on Yelp.com.
+                </p>
+              </div>
+
+              {/* Input Type Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Connect Using
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setYelpInputType('url')}
+                    className={`p-3 border rounded-lg text-left transition-all ${
+                      yelpInputType === 'url'
+                        ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white">Yelp URL</div>
+                    <p className="text-xs text-slate-500 mt-1">Paste your Yelp business page URL</p>
+                  </button>
+                  <button
+                    onClick={() => setYelpInputType('id')}
+                    className={`p-3 border rounded-lg text-left transition-all ${
+                      yelpInputType === 'id'
+                        ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white">Business ID</div>
+                    <p className="text-xs text-slate-500 mt-1">Enter your Yelp Business ID</p>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  {yelpInputType === 'url' ? 'Yelp Business URL' : 'Yelp Business ID'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={yelpInput}
+                  onChange={(e) => setYelpInput(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+                  placeholder={yelpInputType === 'url' 
+                    ? 'https://www.yelp.com/biz/your-business-name' 
+                    : 'your-business-name-city'
+                  }
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  {yelpInputType === 'url' 
+                    ? 'Example: https://www.yelp.com/biz/the-domain-at-wills-crossing-austin'
+                    : 'Example: the-domain-at-wills-crossing-austin'
+                  }
+                </p>
+              </div>
+
+              <button
+                onClick={handleYelpConnect}
+                disabled={loading || !yelpInput.trim()}
+                className="w-full py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</>
+                ) : (
+                  <><RefreshCw className="w-4 h-4" /> Connect & Sync Reviews</>
                 )}
               </button>
             </div>
@@ -480,7 +817,7 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
               Importing Reviews...
             </h3>
             <p className="text-slate-500">
-              This may take a moment. Please don&apos;t close this window.
+              Fetching and analyzing reviews. This may take a moment.
             </p>
           </div>
         )
@@ -494,9 +831,17 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
               Import Complete!
             </h3>
-            <p className="text-slate-500 mb-6">
+            <p className="text-slate-500 mb-4">
               Successfully imported {importedCount} review{importedCount !== 1 ? 's' : ''}.
             </p>
+            
+            {limitationNote && (
+              <div className="mb-6 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-300 text-sm">
+                <Info className="w-4 h-4 inline mr-2" />
+                {limitationNote}
+              </div>
+            )}
+            
             <button
               onClick={() => {
                 onImported()
@@ -544,4 +889,3 @@ export function ImportReviewsModal({ propertyId, onClose, onImported }: ImportRe
     </div>
   )
 }
-
