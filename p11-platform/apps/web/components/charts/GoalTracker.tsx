@@ -506,11 +506,19 @@ export function GoalTracker({ propertyId, currentMetrics }: GoalTrackerProps) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       {/* Header */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
+      <div className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+        <div 
+          role="button"
+          tabIndex={0}
+          onClick={() => setExpanded(!expanded)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setExpanded(!expanded)
+            }
+          }}
+          className="flex items-center gap-3 flex-1 cursor-pointer"
+        >
           <div className="p-2 bg-indigo-100 rounded-lg">
             <Target size={20} className="text-indigo-600" />
           </div>
@@ -529,8 +537,7 @@ export function GoalTracker({ propertyId, currentMetrics }: GoalTrackerProps) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={(e) => {
-              e.stopPropagation()
+            onClick={() => {
               setEditingGoal(undefined)
               setShowModal(true)
             }}
@@ -539,11 +546,22 @@ export function GoalTracker({ propertyId, currentMetrics }: GoalTrackerProps) {
           >
             <Settings2 size={20} />
           </button>
-          <div className={`transform transition-transform ${expanded ? 'rotate-180' : ''}`}>
+          <div 
+            role="button"
+            tabIndex={0}
+            onClick={() => setExpanded(!expanded)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setExpanded(!expanded)
+              }
+            }}
+            className={`transform transition-transform cursor-pointer p-1 hover:bg-slate-100 rounded ${expanded ? 'rotate-180' : ''}`}
+          >
             <TrendingUp size={20} className="text-slate-400" />
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Expanded Content */}
       {expanded && (

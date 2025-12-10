@@ -58,14 +58,14 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 |---------|-------------|--------|
 | **LumaLeasing™** | 24/7 AI chatbot with RAG for instant prospect responses | ✅ Live |
 | **LeadPulse™** | Predictive lead scoring with engagement & behavior analysis | ✅ Live |
-| **TourSpark™** | Automated tour scheduling, reminders & no-show tracking | ✅ Live |
+| **TourSpark™** | Automated tour scheduling with AI-generated confirmation emails | ✅ Live |
 
 ### Content Factory
 | Product | Description | Status |
 |---------|-------------|--------|
 | **ForgeStudio AI™** | Generate content with Google Veo 3 video + Imagen 3 images | ✅ Live |
-| **ReviewFlow AI™** | Multi-source review sync (Google, Yelp) + AI responses | ✅ Live |
-| **SocialPilot X™** | Social media publishing with Instagram integration | ✅ Live |
+| **ReviewFlow AI™** | Multi-source review sync (Google, Yelp, SerpAPI) + AI responses | ✅ Live |
+| **SocialPilot X™** | Instagram integration with per-property OAuth credentials | ✅ Live |
 
 ### Strategic Intelligence
 | Product | Description | Status |
@@ -73,6 +73,31 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | **MultiChannel BI** | Unified analytics with natural language queries | ✅ Live |
 | **MarketVision 360™** | Competitor scraping + Brand Intelligence AI analysis | ✅ Live |
 | **Community Intelligence** | Website scraping + Knowledge base auto-population | ✅ Live |
+
+---
+
+## ✨ Latest Updates (Dec 2025)
+
+### 🔐 Per-Property Social Authentication
+- **Custom OAuth Credentials**: Each property can now configure their own Instagram/Facebook app credentials
+- **Secure Storage**: Encrypted app secrets stored in `social_auth_configs` table
+- **Setup Modal**: New `InstagramSetupModal` component guides users through OAuth app creation
+- **Fallback Support**: Gracefully falls back to environment variables if not configured
+
+### 📧 AI-Powered Tour Confirmations
+- **Smart Email Generation**: `tour-email-generator.ts` creates personalized confirmation emails
+- **Property Context**: Includes amenities, contact info, and tour details
+- **Automated Scheduling**: Integrated with TourSpark lead management
+
+### 📊 Batch Review Analysis
+- **Bulk Processing**: New `/api/reviewflow/analyze-batch` endpoint for analyzing multiple reviews
+- **SerpAPI Integration**: Enhanced Google Places scraping with `serpapi_reviews.py`
+- **Multi-Source Sync**: Improved review sync with better error handling
+
+### 🎨 UI/UX Enhancements
+- **Improved Lead Management**: Enhanced tour scheduling modal with better validation
+- **Review Import Flow**: Streamlined import process with progress indicators
+- **Global Styles**: Updated `globals.css` with better typography and spacing
 
 ---
 
@@ -87,7 +112,7 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | **Video Generation** | Google Veo 3 Preview (video + synchronized audio) |
 | **Image Generation** | Google Imagen 3.0 via Vertex AI |
 | **Data Pipelines** | Python, dlt, Apify (Apartments.com scraping) |
-| **Review APIs** | Google Places API, Yelp Fusion API |
+| **Review APIs** | Google Places API, Yelp Fusion API, SerpAPI |
 | **Auth** | Supabase Auth (GoTrue) |
 | **Deployment** | Vercel (web), Heroku (data-engine) |
 
@@ -101,46 +126,54 @@ oneClick/
 │   ├── apps/
 │   │   └── web/                    # Next.js 16 Dashboard
 │   │       ├── app/
-│   │       │   ├── api/            # API Routes (80+ endpoints)
+│   │       │   ├── api/            # API Routes (85+ endpoints)
 │   │       │   │   ├── analytics/  # BI endpoints (performance, goals, campaigns)
 │   │       │   │   ├── chat/       # LumaLeasing RAG chat
 │   │       │   │   ├── community/  # Community profile & contacts
-│   │       │   │   ├── forgestudio/# Content + Veo 3 video generation
+│   │       │   │   ├── forgestudio/# Content + Veo 3 video + social config
 │   │       │   │   ├── leadpulse/  # ML-powered lead scoring
+│   │       │   │   ├── leads/      # Tour scheduling & management
 │   │       │   │   ├── lumaleasing/# Admin config & conversations
 │   │       │   │   ├── marketvision/# Competitor + brand intelligence
-│   │       │   │   ├── reviewflow/ # Multi-source review management
+│   │       │   │   ├── reviewflow/ # Multi-source review management + batch analysis
 │   │       │   │   └── onboarding/ # Website scraping & setup
 │   │       │   ├── auth/           # Authentication pages
 │   │       │   ├── dashboard/      # Product pages (14 sections)
 │   │       │   └── onboarding/     # Multi-step wizard (6 steps)
-│   │       └── components/         # React components (80+)
-│   │           ├── charts/         # BI visualizations
-│   │           ├── community/      # Community management
-│   │           ├── forgestudio/    # Content generation UI
-│   │           ├── leadpulse/      # Lead scoring components
-│   │           ├── lumaleasing/    # Chatbot widget + config
-│   │           ├── marketvision/   # Competitor analysis
-│   │           └── reviewflow/     # Review management
+│   │       ├── components/         # React components (85+)
+│   │       │   ├── charts/         # BI visualizations
+│   │       │   ├── community/      # Community management
+│   │       │   ├── forgestudio/    # Content generation + Instagram setup
+│   │       │   ├── leadpulse/      # Lead scoring components
+│   │       │   ├── leads/          # Tour scheduling modals
+│   │       │   ├── lumaleasing/    # Chatbot widget + config
+│   │       │   ├── marketvision/   # Competitor analysis
+│   │       │   └── reviewflow/     # Review management + import
+│   │       └── utils/
+│   │           └── services/       # Business logic
+│   │               ├── messaging.ts           # SMS/Email services
+│   │               └── tour-email-generator.ts # AI tour confirmations
 │   ├── services/
 │   │   └── data-engine/            # Python ETL & ML
 │   │       ├── pipelines/          # GA4, Google Ads, Meta Ads
-│   │       └── scrapers/           # 9 scraper modules
+│   │       └── scrapers/           # 10 scraper modules
 │   │           ├── apartments_com.py
 │   │           ├── apify_apartments.py
 │   │           ├── brand_intelligence.py
 │   │           ├── coordinator.py
 │   │           ├── discovery.py
 │   │           ├── google_places.py
+│   │           ├── serpapi_reviews.py  # NEW: SerpAPI integration
 │   │           ├── website_intelligence.py
 │   │           └── yelp.py
 │   └── supabase/
-│       └── migrations/             # 10 migration files
+│       └── migrations/             # 11 migration files
 │           ├── 20251208000000_init_schema.sql
 │           ├── 20251209030000_forgestudio_reviewflow_schema.sql
 │           ├── 20251209040000_community_onboarding_schema.sql
 │           ├── 20251209050000_competitor_brand_intelligence.sql
-│           └── 20251210000000_reviewflow_multi_source.sql
+│           ├── 20251210000000_reviewflow_multi_source.sql
+│           └── 20251210010000_social_auth_configs.sql  # NEW
 └── docs/                           # Planning documents
 ```
 
@@ -187,12 +220,20 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 # Review Platforms
 GOOGLE_PLACES_API_KEY=your-key
 YELP_FUSION_API_KEY=your-key
+SERPAPI_API_KEY=your-key  # Optional: for enhanced scraping
+
+# Social Media (Optional: per-property config available via UI)
+META_APP_ID=your-app-id
+META_APP_SECRET=your-app-secret
 
 # Data Engine
 DATA_ENGINE_URL=http://localhost:8000
 
 # Site URL
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# Encryption (for social auth secrets)
+ENCRYPTION_KEY=your-secure-key-here
 ```
 
 ### 3. Run Database Migrations
@@ -234,6 +275,7 @@ Key tables in the unified data model:
 | `competitors` / `competitor_snapshots` | MarketVision scraped data |
 | `competitor_brand_intelligence` | AI-analyzed brand positioning |
 | `competitor_content_chunks` | Vector embeddings for semantic search |
+| `social_auth_configs` | **NEW**: Per-property OAuth credentials |
 
 ---
 
@@ -264,6 +306,18 @@ Body: {
   videoDuration: 4 | 6 | 8,
   includeAudio: boolean  // Veo 3 synchronized audio
 }
+
+// NEW: Social Media Configuration
+POST /api/forgestudio/social/config
+Body: {
+  propertyId: string,
+  platform: "meta",
+  appId: string,
+  appSecret: string
+}
+
+GET /api/forgestudio/social/config?propertyId=...
+Response: { configs: SocialAuthConfig[] }
 ```
 
 ### LeadPulse Scoring
@@ -280,6 +334,22 @@ Response: {
 
 GET /api/leadpulse/insights?propertyId=...
 Response: { insights: LeadInsight[], recommendations: string[] }
+```
+
+### TourSpark Scheduling
+```typescript
+POST /api/leads/[id]/tours
+Body: {
+  tourDate: string,
+  tourTime: string,
+  notes?: string,
+  sendConfirmation: boolean
+}
+Response: {
+  success: boolean,
+  tour: Tour,
+  emailSent: boolean  // NEW: AI-generated confirmation
+}
 ```
 
 ### MarketVision Competitors
@@ -318,6 +388,11 @@ Response: { reviews: Review[], stats: ReviewStats }
 
 POST /api/reviewflow/respond
 Body: { reviewId: string, response: string, tone?: string }
+
+// NEW: Batch Analysis
+POST /api/reviewflow/analyze-batch
+Body: { reviewIds: string[] }
+Response: { analyzed: number, insights: ReviewInsight[] }
 ```
 
 ### Community Intelligence
@@ -379,6 +454,7 @@ python run_pipelines.py
 | Properties per AM | 10-12 | **30-40** |
 | Campaign Optimization | Business hours | **24/7/365** |
 | Review Response Time | Days | **< 1 hour** |
+| Tour Confirmation | Manual | **Instant AI** |
 
 ---
 
@@ -394,10 +470,13 @@ python run_pipelines.py
 ### ✅ Q1 2026 — Intelligence (Complete)
 - [x] MarketVision competitor scraping
 - [x] Brand Intelligence AI analysis
-- [x] ReviewFlow multi-source (Google, Yelp)
+- [x] ReviewFlow multi-source (Google, Yelp, SerpAPI)
 - [x] LeadPulse ML scoring
 - [x] ForgeStudio Veo 3 video generation
 - [x] Website Intelligence scraping
+- [x] Per-property social OAuth
+- [x] AI tour confirmations
+- [x] Batch review analysis
 
 ### 🔨 Q2 2026 — Scale (In Progress)
 - [ ] TourSpark automation sequences
