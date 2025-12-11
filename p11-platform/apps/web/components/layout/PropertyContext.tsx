@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 
 type Property = {
   id: string;
@@ -27,11 +28,47 @@ const DEFAULT_PROPERTIES: Property[] = [
   { id: '323e4567-e89b-12d3-a456-426614174000', name: 'Parkview Commons', city: 'Seattle, WA' },
 ];
 
-export function PropertyProvider({ children }: { children: React.ReactNode }) {
-  const [properties, setProperties] = useState<Property[]>(DEFAULT_PROPERTIES);
-  const [selectedId, setSelectedId] = useState<string>(DEFAULT_PROPERTY_ID);
-  const [loading, setLoading] = useState<boolean>(false);
+const STORAGE_KEY = 'p11_selected_property_id';
 
+// Helper to detect property ID from URL path
+function extractPropertyIdFromPath(pathname: string): string | null {
+  // Match patterns like /dashboard/brandforge/[uuid] or /dashboard/properties/[uuid]
+  const patterns = [
+    /\/dashboard\/brandforge\/([a-f0-9-]{36})/i,
+    /\/dashboard\/properties\/([a-f0-9-]{36})/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = pathname.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+export function PropertyProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [properties, setProperties] = useState<Property[]>(DEFAULT_PROPERTIES);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [selectedId, setSelectedIdState] = useState<string>(DEFAULT_PROPERTY_ID);
+  
+  // Use ref to track initialization without causing re-renders
+  const initializedRef = useRef(false);
+  const lastPathnameRef = useRef<string | null>(null);
+
+  // Wrapper to persist selection to localStorage
+  const setSelectedId = useCallback((id: string) => {
+    setSelectedIdState((prev) => {
+      if (prev === id) return prev; // Prevent unnecessary updates
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, id);
+      }
+      return id;
+    });
+  }, []);
+
+  // Fetch properties (only on mount)
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -40,18 +77,13 @@ export function PropertyProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch('/api/properties');
         if (!res.ok) throw new Error('Failed to fetch properties');
         const data = await res.json();
-        const fetched: Property[] = data.properties?.map((p: any) => ({
+        const fetched: Property[] = data.properties?.map((p: { id: string; name: string; settings?: { city?: string }; address?: { city?: string } }) => ({
           id: p.id,
           name: p.name,
           city: p.settings?.city ?? p.address?.city,
         })) ?? [];
         if (!cancelled && fetched.length) {
           setProperties(fetched);
-          // Reset selection if current is missing
-          const stillExists = fetched.some((p) => p.id === selectedId);
-          if (!stillExists) {
-            setSelectedId(fetched[0].id);
-          }
         }
       } catch (err) {
         console.error('Property load error, using defaults', err);
@@ -63,7 +95,61 @@ export function PropertyProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, []);
+
+  // Initialize property selection once when properties are loaded
+  useEffect(() => {
+    // Wait until we have real properties from the API
+    if (properties === DEFAULT_PROPERTIES || properties.length === 0) return;
+    
+    // Only run initialization once
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    
+    // Priority 1: Check if there's a property ID in the URL
+    const urlPropertyId = extractPropertyIdFromPath(pathname);
+    if (urlPropertyId) {
+      const existsInList = properties.some((p) => p.id === urlPropertyId);
+      if (existsInList) {
+        setSelectedId(urlPropertyId);
+        return;
+      }
+    }
+    
+    // Priority 2: Check localStorage
+    const storedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+    if (storedId) {
+      const existsInList = properties.some((p) => p.id === storedId);
+      if (existsInList) {
+        setSelectedId(storedId);
+        return;
+      }
+    }
+    
+    // Priority 3: Use first property if current selection is invalid
+    const currentExists = properties.some((p) => p.id === selectedId);
+    if (!currentExists) {
+      setSelectedId(properties[0].id);
+    }
+  }, [properties, pathname, selectedId, setSelectedId]);
+
+  // Sync with URL changes when navigating to property-specific pages
+  useEffect(() => {
+    // Only after initialization
+    if (!initializedRef.current) return;
+    
+    // Skip if pathname hasn't changed
+    if (pathname === lastPathnameRef.current) return;
+    lastPathnameRef.current = pathname;
+    
+    const urlPropertyId = extractPropertyIdFromPath(pathname);
+    if (urlPropertyId && urlPropertyId !== selectedId) {
+      const existsInList = properties.some((p) => p.id === urlPropertyId);
+      if (existsInList) {
+        setSelectedId(urlPropertyId);
+      }
+    }
+  }, [pathname, properties, selectedId, setSelectedId]);
 
   const contextValue = useMemo<PropertyContextValue>(() => {
     const fallback = properties[0];
@@ -74,7 +160,7 @@ export function PropertyProvider({ children }: { children: React.ReactNode }) {
       loading,
       setProperty: setSelectedId,
     };
-  }, [properties, selectedId, loading]);
+  }, [properties, selectedId, loading, setSelectedId]);
 
   return <PropertyContext.Provider value={contextValue}>{children}</PropertyContext.Provider>;
 }

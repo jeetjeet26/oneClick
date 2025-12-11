@@ -33,3 +33,5 @@ def is_configured() -> bool:
     """Check if Meta Ads is properly configured."""
     return bool(META_ACCESS_TOKEN and META_AD_ACCOUNT_ID)
 
+
+

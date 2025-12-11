@@ -7,9 +7,9 @@ import {
   ContactsManager,
   IntegrationStatusList,
   KnowledgeSourcesList,
-  OnboardingChecklist,
-  AddPropertyModal
+  OnboardingChecklist
 } from '@/components/community'
+import { BrandIdentitySection } from '@/components/community/BrandIdentitySection'
 import { DocumentUploader } from '@/components/luma/DocumentUploader'
 import {
   Building2,
@@ -54,7 +54,6 @@ export default function PropertyDashboardPage() {
   }>({ tasks: [], stats: { total: 0, completed: 0, inProgress: 0, pending: 0, blocked: 0, progress: 0 } })
   
   // Modal states
-  const [showAddModal, setShowAddModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -134,7 +133,7 @@ export default function PropertyDashboardPage() {
             Refresh
           </button>
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => window.location.href = '/dashboard/properties/new'}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
           >
             <Plus size={16} />
@@ -208,6 +207,14 @@ export default function PropertyDashboardPage() {
                   onUpdate={() => fetchData()}
                 />
               </div>
+
+              {/* Brand Identity Section */}
+              {currentProperty?.id && (
+                <BrandIdentitySection 
+                  propertyId={currentProperty.id} 
+                  propertyName={currentProperty.name}
+                />
+              )}
 
               {/* Knowledge Summary */}
               <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 p-6">
@@ -293,13 +300,6 @@ export default function PropertyDashboardPage() {
         </>
       )}
 
-      {/* Add Property Modal */}
-      <AddPropertyModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSuccess={handleAddSuccess}
-        existingProperties={properties}
-      />
     </div>
   )
 }

@@ -32,3 +32,5 @@ async def log_mcp_operation(
         # Don't fail the operation if audit logging fails
         print(f"Warning: Failed to log MCP operation: {e}")
 
+
+

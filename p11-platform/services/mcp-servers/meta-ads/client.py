@@ -417,3 +417,5 @@ class MetaAdsClient:
         result = await self._get(f"/{object_id}/insights", params)
         return result.get("data", [])
 
+
+

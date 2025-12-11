@@ -22,18 +22,49 @@ interface ScrapeStatus {
 
 export function CommunityStep() {
   const router = useRouter()
-  const { formData, updateCommunity, setWebsiteScrapeResult, error, setError, canProceed, goToNextStep, editMode } = useAddProperty()
+  const { formData, updateCommunity, setWebsiteScrapeResult, error, setError, canProceed, goToNextStep, editMode, createdPropertyId, setCreatedPropertyId, setIsLoading } = useAddProperty()
   const { community } = formData
   const [showAmenities, setShowAmenities] = useState(false)
   const [scrapeStatus, setScrapeStatus] = useState<ScrapeStatus>({ status: 'idle' })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!community.name.trim()) {
       setError('Community name is required')
       return
     }
     setError(null)
+    
+    // Create property early if not in edit mode, so we have propertyId for BrandForge
+    if (!createdPropertyId && !editMode.isEditing) {
+      setIsLoading(true)
+      try {
+        const res = await fetch('/api/properties/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: community.name.trim(),
+            address: community.address.street ? community.address : null,
+            propertyType: community.type || null,
+            websiteUrl: community.websiteUrl || null,
+            unitCount: community.unitCount ? parseInt(community.unitCount) : null,
+            yearBuilt: community.yearBuilt ? parseInt(community.yearBuilt) : null
+          })
+        })
+        
+        const data = await res.json()
+        
+        if (res.ok && data.property?.id) {
+          setCreatedPropertyId(data.property.id)
+        }
+      } catch (err) {
+        console.error('Early property creation failed:', err)
+        // Continue anyway - will create at Review step
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
     goToNextStep()
   }
 

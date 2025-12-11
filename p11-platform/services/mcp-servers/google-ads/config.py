@@ -50,3 +50,5 @@ def is_configured() -> bool:
         GOOGLE_ADS_CLIENT_SECRET,
     ])
 
+
+

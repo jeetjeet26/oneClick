@@ -28,3 +28,5 @@ def clean_customer_id(customer_id: str) -> str:
     """Remove dashes from customer ID."""
     return customer_id.replace("-", "")
 
+
+

@@ -23,3 +23,5 @@ def format_campaign_row(campaign: dict) -> str:
         f"Conversions: {campaign.get('conversions', 0)}"
     )
 
+
+

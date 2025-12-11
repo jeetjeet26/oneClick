@@ -63,6 +63,7 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 ### Content Factory
 | Product | Description | Status |
 |---------|-------------|--------|
+| **BrandForge™** | AI-powered brand book generator with Gemini 2.0 - complete brand strategy in 30 minutes | ✅ Live |
 | **ForgeStudio AI™** | Generate content with Google Veo 3 video + Imagen 3 images | ✅ Live |
 | **ReviewFlow AI™** | Multi-source review sync (Google, Yelp, SerpAPI) + AI responses | ✅ Live |
 | **SocialPilot X™** | Instagram integration with per-property OAuth credentials | ✅ Live |
@@ -77,6 +78,55 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 ---
 
 ## ✨ Latest Updates (Dec 2025)
+
+### 🎨 BrandForge™ - AI Brand Book Generator! (Dec 10, 2025)
+**Generate professional brand guidelines in 30 minutes!**
+
+#### What is BrandForge?
+An AI-powered brand book generator that creates comprehensive brand guidelines through a conversational process with Gemini 2.0. It produces the same quality deliverables as P11's manual brand books (matching the ALBUM brand book structure).
+
+#### Features ✅
+- **Competitive Analysis Integration:** Leverages MarketVision intelligence to inform brand positioning
+- **Conversational Wizard:** 8-10 exchange conversation with Gemini 2.0 to understand brand vision
+- **12 Section Brand Book:**
+  1. Introduction & Brand Overview
+  2. Positioning Statement
+  3. Target Audience Analysis
+  4. Resident Personas (3 profiles)
+  5. Brand Name & Story
+  6. Logo Design (AI-generated)
+  7. Typography System
+  8. Color Palette (5-color scheme)
+  9. Design Elements & Patterns
+  10. Photo Guidelines - Do's
+  11. Photo Guidelines - Don'ts
+  12. Implementation Examples
+
+- **Stepwise Generation:** Each section generates sequentially with approval gates
+- **Edit & Regenerate:** Inline editing for all text + AI regeneration with optional hints
+- **PDF Export:** Professional 15-page brand book with all assets
+- **Knowledge Base Integration:** Automatically embedded for LumaLeasing to reference
+- **Property Overview Display:** Brand identity card with colors, logo, and download link
+
+#### Technical Implementation
+- **API Routes:** 8 new endpoints (`/api/brandforge/*`)
+- **Components:** 5 new React components (`BrandForgeWizard`, `ConversationInterface`, `SectionReview`, etc.)
+- **AI Model:** Gemini 2.0 Flash Exp for conversation & generation
+- **Image Generation:** Imagen 3.0 via Vertex AI for logo design
+- **Storage:** `property_brand_assets` table + Supabase Storage bucket
+
+#### Integration Points
+- **Property Onboarding:** "Generate Brand Book" option in Knowledge Base step
+- **Community Overview:** Brand identity display card with download
+- **Future Ready:** Structured storage for SiteForge WordPress site generation
+
+**What This Means:**
+- 🚀 Brand books that took 2-3 weeks now take 30 minutes
+- 🎨 Professional-quality brand strategy accessible to every property
+- 💡 Competitive intelligence directly informs brand positioning
+- 📦 Reusable brand assets across all P11 products
+
+---
 
 ### 🎉 TourSpark™ CRM MVP Launched! (Dec 10, 2025)
 **The #1 most requested feature is now live!**
@@ -133,7 +183,7 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | **Frontend** | Next.js 16, React 19.2, Tailwind CSS 4, Recharts |
 | **Backend** | Next.js API Routes, FastAPI (Python) |
 | **Database** | PostgreSQL + pgvector (Supabase) |
-| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, LangChain |
+| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, Google Gemini 2.0 Flash, LangChain |
 | **Video Generation** | Google Veo 3 Preview (video + synchronized audio) |
 | **Image Generation** | Google Imagen 3.0 via Vertex AI |
 | **Data Pipelines** | Python, dlt, Apify (Apartments.com scraping) |
@@ -151,8 +201,9 @@ oneClick/
 │   ├── apps/
 │   │   └── web/                    # Next.js 16 Dashboard
 │   │       ├── app/
-│   │       │   ├── api/            # API Routes (85+ endpoints)
+│   │       │   ├── api/            # API Routes (95+ endpoints)
 │   │       │   │   ├── analytics/  # BI endpoints (performance, goals, campaigns)
+│   │       │   │   ├── brandforge/ # AI brand book generation (8 endpoints) 🆕
 │   │       │   │   ├── chat/       # LumaLeasing RAG chat
 │   │       │   │   ├── community/  # Community profile & contacts
 │   │       │   │   ├── forgestudio/# Content + Veo 3 video + social config
@@ -163,11 +214,13 @@ oneClick/
 │   │       │   │   ├── reviewflow/ # Multi-source review management + batch analysis
 │   │       │   │   └── onboarding/ # Website scraping & setup
 │   │       │   ├── auth/           # Authentication pages
-│   │       │   ├── dashboard/      # Product pages (14 sections)
+│   │       │   ├── dashboard/      # Product pages (15 sections)
+│   │       │   │   └── brandforge/ # Brand book viewer & editor 🆕
 │   │       │   └── onboarding/     # Multi-step wizard (6 steps)
-│   │       ├── components/         # React components (85+)
+│   │       ├── components/         # React components (90+)
+│   │       │   ├── brandforge/     # Brand book generation UI 🆕
 │   │       │   ├── charts/         # BI visualizations
-│   │       │   ├── community/      # Community management
+│   │       │   ├── community/      # Community management + brand display
 │   │       │   ├── forgestudio/    # Content generation + Instagram setup
 │   │       │   ├── leadpulse/      # Lead scoring components
 │   │       │   ├── leads/          # Tour scheduling modals
@@ -239,9 +292,12 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-key
 # OpenAI
 OPENAI_API_KEY=sk-...
 
-# Google Cloud (Vertex AI for Veo 3)
+# Google Cloud (Vertex AI for Veo 3 & Imagen 3)
 GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+
+# Google Gemini 2.0 (for BrandForge)
+GOOGLE_GEMINI_API_KEY=your-gemini-api-key
 
 # Review Platforms
 GOOGLE_PLACES_API_KEY=your-key
@@ -296,12 +352,13 @@ Key tables in the unified data model:
 | `leads` | Lead tracking and scoring |
 | `conversations` / `messages` | Chat history |
 | `content_drafts` / `forgestudio_assets` | Generated content & media |
+| `property_brand_assets` | 🆕 BrandForge generated brand books (12 sections) |
 | `reviews` / `review_responses` | ReviewFlow data |
 | `review_platform_connections` | Google, Yelp, manual connections |
 | `competitors` / `competitor_snapshots` | MarketVision scraped data |
 | `competitor_brand_intelligence` | AI-analyzed brand positioning |
 | `competitor_content_chunks` | Vector embeddings for semantic search |
-| `social_auth_configs` | **NEW**: Per-property OAuth credentials |
+| `social_auth_configs` | Per-property OAuth credentials |
 
 ---
 
@@ -421,6 +478,58 @@ Body: { reviewIds: string[] }
 Response: { analyzed: number, insights: ReviewInsight[] }
 ```
 
+### BrandForge AI Brand Books
+```typescript
+// Step 1: Analyze competitors
+POST /api/brandforge/analyze
+Body: { propertyId: string }
+Response: {
+  competitors: Competitor[],
+  marketGaps: string[],
+  recommendations: string[]
+}
+
+// Step 2: Conversation with Gemini 2.0
+POST /api/brandforge/conversation
+Body: { propertyId: string, userMessage: string, conversationHistory: Message[] }
+Response: {
+  aiResponse: string,
+  isComplete: boolean,
+  nextPrompt?: string
+}
+
+// Step 3: Generate sections sequentially
+POST /api/brandforge/generate-next-section
+Body: { propertyId: string }
+Response: {
+  section: string,  // "introduction" | "positioning" | "target_audience" | ...
+  content: object,  // Structured section data
+  progress: number  // 1-12
+}
+
+// Edit, regenerate, or approve sections
+POST /api/brandforge/edit-section
+POST /api/brandforge/regenerate-section
+POST /api/brandforge/approve-section
+
+// Generate final PDF
+POST /api/brandforge/generate-pdf
+Body: { propertyId: string }
+Response: {
+  pdfUrl: string,
+  assetId: string,
+  documentId: string  // Knowledge base reference
+}
+
+GET /api/brandforge/status?propertyId=...
+Response: {
+  stage: "pending" | "analyzing" | "conversing" | "generating" | "complete",
+  currentSection: string,
+  approvedSections: string[],
+  conversationHistory: Message[]
+}
+```
+
 ### Community Intelligence
 ```typescript
 POST /api/onboarding/scrape-website
@@ -477,6 +586,7 @@ python run_pipelines.py
 |--------|-------------|----------|
 | Response Time | Hours | **Seconds** |
 | Content Output | 50-75/month | **300+/month** |
+| Brand Book Creation | 2-3 weeks | **30 minutes** 🆕 |
 | Properties per AM | 10-12 | **30-40** |
 | Campaign Optimization | Business hours | **24/7/365** |
 | Review Response Time | Days | **< 1 hour** |
@@ -508,11 +618,13 @@ python run_pipelines.py
 
 ### 🔨 Q2 2026 — Scale (In Progress)
 - [x] TourSpark automation sequences ✅
+- [x] **BrandForge™** - AI brand book generator ✅ (Early delivery!)
 - [ ] Advanced pipeline configuration UI
 - [ ] LLM-powered CRM configurator
 - [ ] SocialPilot auto-posting
 - [ ] AdForge ad generation
 - [ ] SearchBoost SEO automation
+- [ ] **SiteForge™** - WordPress site generation from brand assets
 
 ### 📋 Q3-Q4 2026 — Optimization
 - [ ] ChurnSignal retention prediction
@@ -523,16 +635,29 @@ python run_pipelines.py
 
 ## 📚 Documentation
 
-- [Implementation Plan](./Implementation_Plan_MVP.md)
+### Core Documentation
+- [Master Implementation Plan 2026](./Master_Implementation_Plan_2026.md)
 - [Product Tech Specs](./Product_Tech_Specs.md)
 - [Progress Report](./Progress_Analysis_Report.md)
 - [Roadmap & RICE Analysis](./P11_Product_Roadmap_RICE_Analysis.md)
-- [ForgeStudio Veo 3 Update](./p11-platform/apps/web/FORGESTUDIO_VEO3_UPDATE.md)
-- [ReviewFlow Multi-Source](./p11-platform/apps/web/REVIEWFLOW_MULTI_SOURCE.md)
-- [Community Onboarding Plan](./p11-platform/Community_Onboarding_Enhancement_Plan.md)
-- **[CRM Implementation Guide](./p11-platform/CRM_MVP_IMPLEMENTATION_COMPLETE.md)** ⭐ NEW
-- **[CRM Quick Start](./p11-platform/CRM_QUICK_START.md)** ⭐ NEW
+- [Executive Summary](./P11_Executive_Summary.md)
+- [Implementation Checklist](./P11_Implementation_Checklist.md)
+
+### Product Guides
+- **[BrandForge Quick Start](./p11-platform/BRANDFORGE_QUICKSTART.md)** 🆕 
+- **[BrandForge Complete Summary](./p11-platform/BRANDFORGE_COMPLETE_SUMMARY.md)** 🆕
+- **[BrandForge Implementation](./p11-platform/apps/web/BRANDFORGE_IMPLEMENTATION.md)** 🆕
+- [CRM Implementation Guide](./p11-platform/CRM_MVP_IMPLEMENTATION_COMPLETE.md)
+- [CRM Quick Start](./p11-platform/CRM_QUICK_START.md)
 - [CRM Vision & Context](./p11-platform/P11_CRM_VISION_CONTEXT.md)
+- [Email Diagnostic Guide](./p11-platform/EMAIL_DIAGNOSTIC_GUIDE.md)
+
+### Technical Documentation
+- [MCP Servers README](./p11-platform/services/mcp-servers/README.md)
+- [Data Engine README](./p11-platform/services/data-engine/README.md)
+
+### Archived Documentation
+- [Outdated Documentation](./outdated/) - Historical implementation notes
 
 ---
 

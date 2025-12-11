@@ -1,5 +1,6 @@
 export { CommunityProfileCard, PropertyProfileCard } from './CommunityProfileCard'
 export { ContactsManager } from './ContactsManager'
+export { BrandIdentitySection } from './BrandIdentitySection'
 export { IntegrationStatusList } from './IntegrationStatusList'
 export { KnowledgeSourcesList } from './KnowledgeSourcesList'
 export { OnboardingChecklist } from './OnboardingChecklist'
