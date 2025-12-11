@@ -107,8 +107,8 @@ export default function ReviewFlowPage() {
             <Star className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              ReviewFlow AI
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span className="text-slate-900 dark:text-slate-900">ReviewFlow AI</span>
               <span className="text-xs px-2 py-0.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-full">
                 Beta
               </span>

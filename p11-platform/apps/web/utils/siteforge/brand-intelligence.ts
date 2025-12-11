@@ -311,3 +311,4 @@ export async function getPropertyContext(propertyId: string): Promise<PropertyCo
     yearBuilt: property.year_built
   }
 }
+

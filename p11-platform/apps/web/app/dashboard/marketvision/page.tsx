@@ -443,11 +443,11 @@ export default function MarketVisionPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <TrendingUp className="w-7 h-7 text-emerald-500" />
-            MarketVision 360
+            <span className="text-gray-900 dark:text-gray-900">MarketVision 360</span>
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-700 dark:text-gray-300 mt-1">
             Competitive intelligence and market analysis
           </p>
         </div>

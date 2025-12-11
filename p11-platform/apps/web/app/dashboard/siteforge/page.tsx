@@ -167,11 +167,11 @@ export default function SiteForgePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <Globe className="w-7 h-7 text-indigo-500" />
-            SiteForge
+            <span className="text-gray-900 dark:text-gray-900">SiteForge</span>
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-700 dark:text-gray-300 mt-1">
             AI-powered WordPress website generation
           </p>
         </div>

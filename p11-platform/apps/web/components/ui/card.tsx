@@ -49,3 +49,4 @@ export function CardFooter({ className = '', ...props }: React.HTMLAttributes<HT
     <div className={`flex items-center p-6 pt-0 ${className}`} {...props} />
   )
 }
+

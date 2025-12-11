@@ -325,3 +325,4 @@ export interface RefineRequest {
     cta?: 'stronger' | 'softer'
   }
 }
+

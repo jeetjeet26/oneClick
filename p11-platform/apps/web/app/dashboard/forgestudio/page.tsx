@@ -51,13 +51,13 @@ export default function ForgeStudioPage() {
             <Sparkles className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              ForgeStudio AI
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span className="text-slate-900 dark:text-slate-900">ForgeStudio AI</span>
               <span className="text-xs px-2 py-0.5 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-full">
                 NEW
               </span>
             </h1>
-            <p className="text-slate-500">
+            <p className="text-slate-700 dark:text-slate-300">
               AI-powered content creation for {currentProperty.name}
             </p>
           </div>
