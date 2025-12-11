@@ -205,7 +205,7 @@ export function PropertyBrandInsightsCard({ propertyId, propertyName }: Property
             Brand Colors
           </h4>
           <div className="flex flex-wrap gap-2">
-            {insights.colorsMentioned.map((color, idx) => (
+            {insights.colorsMentioned.filter(color => color != null).map((color, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 {color.startsWith('#') ? (
                   <div

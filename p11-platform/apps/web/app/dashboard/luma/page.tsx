@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { ChatInterface } from '@/components/luma/ChatInterface'
 import { DocumentUploader } from '@/components/luma/DocumentUploader'
 import { DocumentList } from '@/components/luma/DocumentList'
@@ -14,6 +14,11 @@ export default function LumaPage() {
   const [convRefreshKey, setConvRefreshKey] = useState(0)
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [isAgentMode, setIsAgentMode] = useState(true) // Default to agent view for dashboard users
+
+  // Reset selected conversation when property changes
+  useEffect(() => {
+    setSelectedConversation(null)
+  }, [currentProperty.id])
 
   const handleUploadComplete = () => {
     setDocRefreshKey(prev => prev + 1)

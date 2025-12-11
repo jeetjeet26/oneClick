@@ -132,6 +132,23 @@ export function ChatInterface({ conversationId: initialConversationId, onConvers
     }
   }, [initialConversationId, currentProperty.name, loadConversation]);
 
+  // Reset conversation when property changes
+  useEffect(() => {
+    // Only reset if we're not loading a specific conversation
+    if (!initialConversationId && conversationId) {
+      // Property changed while in an active conversation - start fresh
+      setMessages([{
+        id: 'welcome',
+        role: 'assistant',
+        content: `Hello! I'm Luma, your AI leasing assistant for ${currentProperty.name}. How can I help you today?`,
+        timestamp: new Date()
+      }]);
+      setConversationId(null);
+      setIsHumanMode(false);
+      setLeadInfo(null);
+    }
+  }, [currentProperty.id, initialConversationId, conversationId, currentProperty.name]);
+
   const startNewConversation = () => {
     setMessages([{
       id: 'welcome',
