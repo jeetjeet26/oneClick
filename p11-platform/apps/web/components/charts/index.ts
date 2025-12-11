@@ -9,5 +9,6 @@ export { ExportButton } from './ExportButton'
 export { ScheduleReportModal } from './ScheduleReportModal'
 export { GoalTracker } from './GoalTracker'
 export { AnomalyAlert } from './AnomalyAlert'
+export { CSVUploadModal } from './CSVUploadModal'
 export type { DateRange } from './DateRangePicker'
 

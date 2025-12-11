@@ -84,6 +84,62 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 
 ## ✨ Latest Updates (Dec 2025)
 
+### 📊 MultiChannel BI - CSV Import Feature! (Dec 11, 2025)
+**Import marketing data from Google Ads and Meta in seconds!**
+
+#### What is CSV Import?
+
+A comprehensive data import system that lets users upload CSV exports from Google Ads and Meta Ads directly into the MultiChannel BI dashboard - no API connections required!
+
+#### Features ✅
+
+* **Multi-Platform Support:** Google Ads and Meta Ads CSV exports
+* **8+ Report Types:** 
+  - Time Series (daily performance)
+  - Search Keywords
+  - Demographics (gender, age)
+  - Devices (mobile, desktop, tablet)
+  - Locations (geographic breakdown)
+  - Day & Hour (dayparting analysis)
+  - Auction Insights
+  - Networks
+* **Smart Parser:** Auto-detects platform and report type from CSV structure
+* **Batch Processing:** Upload multiple files or entire folders at once
+* **Preview Mode:** See parsed data and totals before importing
+* **4-Step Wizard:** Platform selection → Upload → Preview → Import
+
+#### Technical Implementation
+
+* **CSV Parser:** 615 lines of robust parsing logic handling multiple date formats, currency formats, and data structures
+* **API Route:** `/api/analytics/upload` with preview and import modes
+* **Data Storage:** 
+  - Time series → `fact_marketing_performance` table
+  - Extended reports → `fact_extended_metrics` table
+* **UI Component:** Drag-and-drop modal with real-time validation and progress tracking
+
+#### Use Cases
+
+* 🚀 Quick setup without API configuration
+* 📊 Import historical campaign data
+* 🧪 Test the dashboard with real data
+* 🏢 Agencies managing multiple client exports
+
+#### Cost Efficiency
+
+| Method | Setup Time | Historical Data |
+| -- | -- | -- |
+| API Integration | 30-60 min | Limited |
+| CSV Import | **< 2 minutes** | **Unlimited** |
+
+**What This Means:**
+
+* 📥 Instant access to marketing data without complex API setup
+* 📈 Import years of historical campaign data in minutes
+* 🎯 Support for detailed dimensional analysis (keywords, demographics, locations)
+* 🔄 Works alongside API pipelines for hybrid data ingestion
+
+---
+
 ### 🌐 SiteForge™ - AI WordPress Site Generator! (Dec 11, 2025)
 **Generate complete WordPress websites in 3 minutes!**
 
@@ -420,6 +476,53 @@ Key tables in the unified data model:
 ---
 
 ## 🔌 API Reference
+
+### MultiChannel BI & Analytics
+
+```http
+GET /api/analytics/performance?propertyId=...&startDate=...&endDate=...&compare=true
+Response: { timeSeries: [], channels: [], totals: {}, comparison: {} }
+
+GET /api/analytics/campaigns?propertyId=...&startDate=...&endDate=...
+Response: { campaigns: [], channels: [], totals: {} }
+
+POST /api/analytics/upload
+Body: {
+  csvContent: string,
+  filename: string,
+  campaignName: string,
+  propertyId: string,
+  platform: "google_ads" | "meta",
+  preview?: boolean  // Set true to validate before import
+}
+Response: {
+  success: boolean,
+  preview?: {
+    totalRows: number,
+    dateRange: { start: string, end: string },
+    reportType: string,
+    isExtended: boolean,
+    totals: { impressions, clicks, spend, conversions }
+  },
+  imported?: {
+    rowCount: number,
+    dateRange: { start: string, end: string },
+    reportType: string
+  },
+  errors?: string[],
+  warnings?: string[]
+}
+```
+
+**Supported Report Types:**
+- Time Series (daily performance data)
+- Search Keywords
+- Demographics (gender, age)
+- Devices (mobile, desktop, tablet)
+- Locations (geographic breakdown)
+- Day & Hour (dayparting analysis)
+- Auction Insights
+- Networks
 
 ### LumaLeasing Chat
 ```typescript

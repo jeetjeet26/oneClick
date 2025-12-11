@@ -14,6 +14,7 @@ import {
   ScheduleReportModal,
   GoalTracker,
   AnomalyAlert,
+  CSVUploadModal,
   DATE_PRESETS,
   type DateRange 
 } from '@/components/charts'
@@ -30,7 +31,8 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronUp,
-  Table
+  Table,
+  Upload
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -134,6 +136,7 @@ export default function MultiChannelBIPage() {
   const [showCampaigns, setShowCampaigns] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
 
   const fetchData = useCallback(async () => {
     if (!currentProperty?.id) return
@@ -294,6 +297,14 @@ export default function MultiChannelBIPage() {
             <span className="hidden sm:inline">Compare</span>
           </button>
           <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+            title="Import CSV data from Google Ads or Meta"
+          >
+            <Upload size={16} />
+            <span className="hidden sm:inline">Import</span>
+          </button>
           <ExportButton 
             getData={getExportData}
             disabled={!hasData || loading}
@@ -604,17 +615,23 @@ export default function MultiChannelBIPage() {
               No Marketing Data Yet
             </h3>
             <p className="text-slate-500 mb-6">
-              Your MultiChannel BI dashboard will come alive once you connect your ad platforms 
-              and run the data pipelines.
+              Your MultiChannel BI dashboard will come alive once you import data or connect your ad platforms.
             </p>
-            <div className="bg-white rounded-lg p-4 text-left text-sm border border-slate-200">
+            <div className="bg-white rounded-lg p-4 text-left text-sm border border-slate-200 mb-4">
               <p className="font-medium text-slate-700 mb-2">Quick Start:</p>
               <ol className="list-decimal list-inside space-y-1 text-slate-600">
-                <li>Configure Meta/Google Ads credentials in .env</li>
-                <li>Run the data pipelines in <code className="bg-slate-100 px-1 rounded">services/data-engine</code></li>
-                <li>Data will appear here automatically</li>
+                <li>Click the <strong>Import</strong> button above</li>
+                <li>Upload a CSV export from Google Ads or Meta</li>
+                <li>Review and confirm the import</li>
               </ol>
             </div>
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+            >
+              <Upload size={16} />
+              Import Marketing Data
+            </button>
           </div>
         </div>
       )}
@@ -626,6 +643,20 @@ export default function MultiChannelBIPage() {
         propertyId={currentProperty?.id}
         propertyName={currentProperty?.name}
       />
+
+      {/* CSV Upload Modal */}
+      {currentProperty?.id && (
+        <CSVUploadModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          propertyId={currentProperty.id}
+          propertyName={currentProperty.name}
+          onSuccess={() => {
+            // Refresh data after successful import
+            fetchData()
+          }}
+        />
+      )}
     </div>
   )
 }
