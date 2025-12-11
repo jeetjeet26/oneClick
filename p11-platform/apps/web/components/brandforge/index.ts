@@ -4,4 +4,6 @@ export { SectionReview } from './SectionReview'
 export { CompletionView } from './CompletionView'
 export { BrandDisplay } from './BrandDisplay'
 export { PropertyBrandInsightsCard } from './PropertyBrandInsightsCard'
+export { BrandForgeCompetitorCard } from './BrandForgeCompetitorCard'
+export type { BrandForgeCompetitor } from './BrandForgeCompetitorCard'
 

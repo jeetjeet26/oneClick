@@ -67,27 +67,63 @@ export async function POST(req: NextRequest) {
     // Brief wait for discovery to process
     await new Promise(resolve => setTimeout(resolve, 2000))
 
-    // Get competitors with brand intelligence
+    // Get ALL competitors with full details and brand intelligence
     const { data: competitors } = await supabase
       .from('competitors')
       .select(`
         id,
         name,
         address,
+        website_url,
+        phone,
         property_type,
+        units_count,
+        year_built,
         amenities,
+        photos,
+        last_scraped_at,
         brand_intel:competitor_brand_intelligence(
           brand_voice,
           brand_personality,
           positioning_statement,
           target_audience,
           unique_selling_points,
-          highlighted_amenities
+          highlighted_amenities,
+          active_specials,
+          lifestyle_focus
         )
       `)
       .eq('property_id', propertyId)
       .eq('is_active', true)
+      .order('name')
       .limit(maxCompetitors)
+
+    // Trigger brand intelligence scraping for competitors without analysis
+    if (competitors && competitors.length > 0) {
+      const unanalyzedCompetitors = competitors.filter(c => 
+        !c.brand_intel || !c.brand_intel.brand_voice
+      )
+      
+      if (unanalyzedCompetitors.length > 0) {
+        console.log(`Triggering brand intelligence for ${unanalyzedCompetitors.length} unanalyzed competitors`)
+        
+        // Trigger brand intelligence jobs (async, non-blocking)
+        try {
+          await fetch(`${DATA_ENGINE_URL}/scraper/brand-intelligence/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              property_id: propertyId,
+              competitor_ids: unanalyzedCompetitors.map(c => c.id)
+            })
+          }).catch(err => {
+            console.warn('Brand intelligence trigger failed (non-blocking):', err)
+          })
+        } catch (err) {
+          console.warn('Could not trigger brand intelligence (non-blocking):', err)
+        }
+      }
+    }
 
     // Analyze market gaps
     const brandVoices = competitors?.map(c => c.brand_intel?.brand_voice).filter(Boolean) || []
@@ -135,11 +171,23 @@ export async function POST(req: NextRequest) {
       competitors: competitors?.map(c => ({
         id: c.id,
         name: c.name,
+        address: c.address,
+        websiteUrl: c.website_url,
+        phone: c.phone,
+        propertyType: c.property_type,
+        unitsCount: c.units_count,
+        yearBuilt: c.year_built,
+        amenities: c.amenities || [],
+        photos: c.photos || [],
+        lastScrapedAt: c.last_scraped_at,
         brandVoice: c.brand_intel?.brand_voice || 'Not analyzed',
         personality: c.brand_intel?.brand_personality || 'Not analyzed',
         positioning: c.brand_intel?.positioning_statement || 'Not analyzed',
         targetAudience: c.brand_intel?.target_audience || 'Not analyzed',
-        usps: c.brand_intel?.unique_selling_points || []
+        usps: c.brand_intel?.unique_selling_points || [],
+        highlightedAmenities: c.brand_intel?.highlighted_amenities || [],
+        activeSpecials: c.brand_intel?.active_specials || [],
+        lifestyleFocus: c.brand_intel?.lifestyle_focus || []
       })) || [],
       competitorCount: competitors?.length || 0,
       marketGaps,

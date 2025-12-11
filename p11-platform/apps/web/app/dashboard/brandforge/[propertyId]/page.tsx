@@ -6,8 +6,9 @@ import { createBrowserClient } from '@supabase/ssr'
 import { 
   ArrowLeft, Download, Sparkles, Palette, Type, 
   Image as ImageIcon, FileText, CheckCircle, Users,
-  Target, Lightbulb, Camera, PenTool, Loader2, Wand2
+  Target, Lightbulb, Camera, PenTool, Loader2, Wand2, Building2
 } from 'lucide-react'
+import { BrandForgeCompetitorCard, type BrandForgeCompetitor } from '@/components/brandforge'
 
 // Component to render full section content
 function SectionContent({ sectionKey, data }: { sectionKey: string; data: any }) {
@@ -312,10 +313,18 @@ export default function BrandBookViewerPage({
   const [generatingImages, setGeneratingImages] = useState<string | null>(null) // 'logo' | 'moodboard' | 'photos'
   const [embeddingToKB, setEmbeddingToKB] = useState(false)
   const [embeddedToKB, setEmbeddedToKB] = useState(false)
+  const [allCompetitors, setAllCompetitors] = useState<any[]>([])
+  const [loadingCompetitors, setLoadingCompetitors] = useState(false)
 
   useEffect(() => {
     fetchBrandAsset()
   }, [propertyId])
+
+  useEffect(() => {
+    if (brandAsset?.competitive_analysis?.competitorIds?.length > 0) {
+      fetchAllCompetitors()
+    }
+  }, [brandAsset])
 
   async function fetchBrandAsset() {
     try {
@@ -348,6 +357,79 @@ export default function BrandBookViewerPage({
       console.error('Failed to fetch brand asset:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchAllCompetitors() {
+    if (!brandAsset) return
+    
+    setLoadingCompetitors(true)
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+
+      // Fetch ALL competitors for this property with full details
+      const { data: competitors } = await supabase
+        .from('competitors')
+        .select(`
+          id,
+          name,
+          address,
+          website_url,
+          phone,
+          property_type,
+          units_count,
+          year_built,
+          amenities,
+          photos,
+          last_scraped_at,
+          brand_intel:competitor_brand_intelligence(
+            brand_voice,
+            brand_personality,
+            positioning_statement,
+            target_audience,
+            unique_selling_points,
+            highlighted_amenities,
+            active_specials,
+            lifestyle_focus
+          )
+        `)
+        .eq('property_id', propertyId)
+        .eq('is_active', true)
+        .order('name')
+
+      if (competitors) {
+        // Transform to BrandForgeCompetitor format
+        const enrichedCompetitors = competitors.map(c => ({
+          id: c.id,
+          name: c.name,
+          address: c.address,
+          websiteUrl: c.website_url,
+          phone: c.phone,
+          propertyType: c.property_type,
+          unitsCount: c.units_count,
+          yearBuilt: c.year_built,
+          amenities: c.amenities || [],
+          photos: c.photos || [],
+          lastScrapedAt: c.last_scraped_at,
+          brandVoice: c.brand_intel?.brand_voice || 'Not analyzed',
+          personality: c.brand_intel?.brand_personality || 'Not analyzed',
+          positioning: c.brand_intel?.positioning_statement || 'Not analyzed',
+          targetAudience: c.brand_intel?.target_audience || 'Not analyzed',
+          usps: c.brand_intel?.unique_selling_points || [],
+          highlightedAmenities: c.brand_intel?.highlighted_amenities || [],
+          activeSpecials: c.brand_intel?.active_specials || [],
+          lifestyleFocus: c.brand_intel?.lifestyle_focus || []
+        }))
+        
+        setAllCompetitors(enrichedCompetitors)
+      }
+    } catch (err) {
+      console.error('Failed to fetch competitors:', err)
+    } finally {
+      setLoadingCompetitors(false)
     }
   }
 
@@ -611,15 +693,15 @@ export default function BrandBookViewerPage({
                 <div className="p-2 rounded-lg bg-blue-100">
                   <Target className="w-5 h-5 text-blue-600" />
                 </div>
-                <div className="flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-900">Competitive Research & Market Positioning</h3>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                      {brandAsset.competitive_analysis.competitorCount || 0} competitors analyzed
-                    </span>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-slate-900">Competitive Research & Market Positioning</h3>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        {allCompetitors.length || brandAsset.competitive_analysis.competitorCount || 0} competitors analyzed
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-500">The market intelligence that informed this brand strategy</p>
                   </div>
-                  <p className="text-sm text-slate-500">The market intelligence that informed this brand strategy</p>
-                </div>
                 <svg 
                   className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'competitive' ? 'rotate-180' : ''}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -635,7 +717,7 @@ export default function BrandBookViewerPage({
                     {/* Market Overview Stats */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 text-center">
-                        <p className="text-3xl font-bold text-indigo-600">{brandAsset.competitive_analysis.competitorCount || 0}</p>
+                        <p className="text-3xl font-bold text-indigo-600">{allCompetitors.length || brandAsset.competitive_analysis.competitorCount || 0}</p>
                         <p className="text-xs text-slate-600 mt-1">Competitors Analyzed</p>
                       </div>
                       <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 text-center">
@@ -741,62 +823,63 @@ export default function BrandBookViewerPage({
                       </div>
                     )}
 
-                    {/* Competitors Analyzed - Enhanced Cards */}
-                    {brandAsset.competitive_analysis.competitors?.length > 0 && (
-                      <div>
-                        <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
-                          <Users className="w-4 h-4 text-indigo-600" />
-                          Competitor Deep Dive
-                        </h4>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {brandAsset.competitive_analysis.competitors.map((comp: any, i: number) => (
-                            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                              <div className="flex items-start justify-between mb-3">
-                                <h5 className="font-semibold text-slate-900">{comp.name}</h5>
-                                <span className={`text-xs px-2 py-1 rounded-full ${
-                                  i === 0 ? 'bg-red-100 text-red-700' : 
-                                  i === 1 ? 'bg-amber-100 text-amber-700' : 
-                                  'bg-slate-100 text-slate-700'
-                                }`}>
-                                  {i === 0 ? 'Primary' : i === 1 ? 'Secondary' : 'Tertiary'}
-                                </span>
-                              </div>
-                              
-                              <div className="space-y-2 text-sm">
-                                {comp.brandVoice && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-slate-500 w-20">Voice:</span>
-                                    <span className="font-medium text-slate-700 capitalize">{comp.brandVoice}</span>
-                                  </div>
-                                )}
-                                {comp.positioning && (
-                                  <div>
-                                    <span className="text-slate-500">Positioning:</span>
-                                    <p className="text-slate-700 italic mt-1">"{comp.positioning}"</p>
-                                  </div>
-                                )}
-                                {comp.targetAudience && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-slate-500 w-20">Target:</span>
-                                    <span className="text-slate-700">{comp.targetAudience}</span>
-                                  </div>
-                                )}
-                              </div>
+                    {/* Competitors Analyzed - Rich Cards */}
+                    {(() => {
+                      // Use allCompetitors if we have them (fresh from DB), otherwise fall back to stored data
+                      const competitorsToDisplay = allCompetitors.length > 0 
+                        ? allCompetitors 
+                        : brandAsset.competitive_analysis.competitors || []
+                      
+                      if (competitorsToDisplay.length === 0) return null
 
-                              <div className="mt-3 pt-3 border-t border-slate-100">
-                                <p className="text-xs text-slate-500">
-                                  <span className="font-medium">Differentiation Strategy:</span> Your brand stands apart by offering {
-                                    i === 0 ? 'family-friendly luxury vs their urban-focused approach' :
-                                    i === 1 ? 'warmth and community vs their corporate feel' :
-                                    'authentic experiences vs their artistic niche'
-                                  }
-                                </p>
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                              <Building2 className="w-5 h-5 text-indigo-600" />
+                              Competitor Deep Dive
+                              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
+                                {competitorsToDisplay.length} {competitorsToDisplay.length === 1 ? 'Competitor' : 'Competitors'}
+                              </span>
+                            </h4>
+                            {loadingCompetitors && (
+                              <div className="flex items-center gap-2 text-sm text-slate-500">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Loading full competitor details...
                               </div>
-                            </div>
-                          ))}
+                            )}
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-5">
+                            {competitorsToDisplay.map((comp: any, idx: number) => (
+                              <BrandForgeCompetitorCard 
+                                key={comp.id || `competitor-${idx}`} 
+                                competitor={{
+                                  id: comp.id || `comp-${idx}`,
+                                  name: comp.name || 'Unknown Competitor',
+                                  address: comp.address || null,
+                                  websiteUrl: comp.websiteUrl || null,
+                                  phone: comp.phone || null,
+                                  propertyType: comp.propertyType || 'apartment',
+                                  unitsCount: comp.unitsCount || null,
+                                  yearBuilt: comp.yearBuilt || null,
+                                  amenities: comp.amenities || [],
+                                  photos: comp.photos || [],
+                                  lastScrapedAt: comp.lastScrapedAt || null,
+                                  brandVoice: comp.brandVoice || 'Not analyzed',
+                                  personality: comp.personality || 'Not analyzed',
+                                  positioning: comp.positioning || 'Not analyzed',
+                                  targetAudience: comp.targetAudience || 'Not analyzed',
+                                  usps: comp.usps || [],
+                                  highlightedAmenities: comp.highlightedAmenities || [],
+                                  activeSpecials: comp.activeSpecials || [],
+                                  lifestyleFocus: comp.lifestyleFocus || []
+                                }} 
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     {/* Positioning Map */}
                     <div>

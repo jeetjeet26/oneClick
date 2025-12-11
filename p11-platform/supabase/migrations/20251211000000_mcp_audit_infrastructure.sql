@@ -78,3 +78,5 @@ COMMENT ON TABLE ad_account_connections IS 'Links ad accounts to properties for 
 
 
 
+
+
