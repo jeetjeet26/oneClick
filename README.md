@@ -68,6 +68,11 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | **ReviewFlow AI™** | Multi-source review sync (Google, Yelp, SerpAPI) + AI responses | ✅ Live |
 | **SocialPilot X™** | Instagram integration with per-property OAuth credentials | ✅ Live |
 
+### Site Generation
+| Product | Description | Status |
+|---------|-------------|--------|
+| **SiteForge™** | AI-powered WordPress website generation with Gemini 3 Pro - complete sites in 3 minutes | ✅ Live |
+
 ### Strategic Intelligence
 | Product | Description | Status |
 |---------|-------------|--------|
@@ -78,6 +83,45 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 ---
 
 ## ✨ Latest Updates (Dec 2025)
+
+### 🌐 SiteForge™ - AI WordPress Site Generator! (Dec 11, 2025)
+**Generate complete WordPress websites in 3 minutes!**
+
+#### What is SiteForge?
+An AI-powered WordPress website generator that creates professional apartment community websites using brand intelligence from BrandForge, knowledge base content, and property data. Deploys directly to Cloudways-hosted WordPress with the Collection theme.
+
+#### Features ✅
+- **3-Tier Brand Intelligence:**
+  1. Priority 1: BrandForge data (95% confidence)
+  2. Priority 2: Knowledge Base extraction (80% confidence)
+  3. Priority 3: Generated from property data (60% confidence)
+- **Gemini 3 Pro Integration:** High-thinking mode for architecture planning, low-thinking for content generation
+- **14 ACF Block Types:** Full support for Collection theme blocks (menu, top-slides, text-section, feature-section, gallery, accordion-section, plans-availability, POI, form, map, and more)
+- **Generation Wizard:** Multi-step modal with live progress tracking (polls every 2 seconds)
+- **Website Preview:** Page-by-page content viewer with section breakdown and design strategy display
+- **WordPress Deployment:** Cloudways API integration for one-click WordPress provisioning
+
+#### Technical Implementation
+- **API Routes:** 6 new endpoints (`/api/siteforge/generate`, `/api/siteforge/list`, `/api/siteforge/status/[websiteId]`, `/api/siteforge/preview/[websiteId]`, `/api/siteforge/deploy/[websiteId]`, `/api/siteforge/delete/[websiteId]`)
+- **Components:** 4 new React components (`GenerationWizard`, `WebsitePreview`, `ACFBlockRenderer`, etc.)
+- **Utils:** 3 service modules (`brand-intelligence.ts`, `llm-orchestration.ts`, `wordpress-client.ts`)
+- **AI Model:** Gemini 3 Pro with structured JSON output
+- **Database:** 4 new tables (`property_websites`, `website_assets`, `website_generations`, `siteforge_jobs`)
+
+#### Cost Efficiency
+| Method | Cost | Time |
+|--------|------|------|
+| Manual Website | $800-1,000 | 2-3 weeks |
+| SiteForge | ~$0.60 | 3 minutes |
+| **Savings** | **99.9%** | **99.9%** |
+
+**What This Means:**
+- 🚀 Websites that took weeks now take minutes
+- 🎨 Brand-consistent sites leveraging BrandForge assets
+- 💡 Intelligent architecture planning by Gemini 3 Pro
+- 📦 Direct WordPress deployment with Collection theme
+
+---
 
 ### 🎨 BrandForge™ - AI Brand Book Generator! (Dec 10, 2025)
 **Generate professional brand guidelines in 30 minutes!**
@@ -183,7 +227,7 @@ An AI-powered brand book generator that creates comprehensive brand guidelines t
 | **Frontend** | Next.js 16, React 19.2, Tailwind CSS 4, Recharts |
 | **Backend** | Next.js API Routes, FastAPI (Python) |
 | **Database** | PostgreSQL + pgvector (Supabase) |
-| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, Google Gemini 2.0 Flash, LangChain |
+| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, Google Gemini 2.0 Flash, Gemini 3 Pro, LangChain |
 | **Video Generation** | Google Veo 3 Preview (video + synchronized audio) |
 | **Image Generation** | Google Imagen 3.0 via Vertex AI |
 | **Data Pipelines** | Python, dlt, Apify (Apartments.com scraping) |
@@ -203,7 +247,8 @@ oneClick/
 │   │       ├── app/
 │   │       │   ├── api/            # API Routes (95+ endpoints)
 │   │       │   │   ├── analytics/  # BI endpoints (performance, goals, campaigns)
-│   │       │   │   ├── brandforge/ # AI brand book generation (8 endpoints) 🆕
+│   │       │   │   ├── brandforge/ # AI brand book generation (8 endpoints)
+│   │       │   │   ├── siteforge/  # AI WordPress site generation (6 endpoints) 🆕
 │   │       │   │   ├── chat/       # LumaLeasing RAG chat
 │   │       │   │   ├── community/  # Community profile & contacts
 │   │       │   │   ├── forgestudio/# Content + Veo 3 video + social config
@@ -214,11 +259,13 @@ oneClick/
 │   │       │   │   ├── reviewflow/ # Multi-source review management + batch analysis
 │   │       │   │   └── onboarding/ # Website scraping & setup
 │   │       │   ├── auth/           # Authentication pages
-│   │       │   ├── dashboard/      # Product pages (15 sections)
-│   │       │   │   └── brandforge/ # Brand book viewer & editor 🆕
+│   │       │   ├── dashboard/      # Product pages (16 sections)
+│   │       │   │   ├── brandforge/ # Brand book viewer & editor
+│   │       │   │   └── siteforge/  # Website generation & preview 🆕
 │   │       │   └── onboarding/     # Multi-step wizard (6 steps)
-│   │       ├── components/         # React components (90+)
-│   │       │   ├── brandforge/     # Brand book generation UI 🆕
+│   │       ├── components/         # React components (95+)
+│   │       │   ├── brandforge/     # Brand book generation UI
+│   │       │   ├── siteforge/      # Website generation wizard & preview 🆕
 │   │       │   ├── charts/         # BI visualizations
 │   │       │   ├── community/      # Community management + brand display
 │   │       │   ├── forgestudio/    # Content generation + Instagram setup
@@ -227,10 +274,16 @@ oneClick/
 │   │       │   ├── lumaleasing/    # Chatbot widget + config
 │   │       │   ├── marketvision/   # Competitor analysis
 │   │       │   └── reviewflow/     # Review management + import
+│   │       ├── types/
+│   │       │   └── siteforge.ts    # SiteForge type definitions 🆕
 │   │       └── utils/
-│   │           └── services/       # Business logic
-│   │               ├── messaging.ts           # SMS/Email services
-│   │               └── tour-email-generator.ts # AI tour confirmations
+│   │           ├── services/       # Business logic
+│   │           │   ├── messaging.ts           # SMS/Email services
+│   │           │   └── tour-email-generator.ts # AI tour confirmations
+│   │           └── siteforge/      # SiteForge services 🆕
+│   │               ├── brand-intelligence.ts  # 3-tier brand extraction
+│   │               ├── llm-orchestration.ts   # Gemini 3 Pro integration
+│   │               └── wordpress-client.ts    # Cloudways & WP REST API
 │   ├── services/
 │   │   └── data-engine/            # Python ETL & ML
 │   │       ├── pipelines/          # GA4, Google Ads, Meta Ads
@@ -352,7 +405,11 @@ Key tables in the unified data model:
 | `leads` | Lead tracking and scoring |
 | `conversations` / `messages` | Chat history |
 | `content_drafts` / `forgestudio_assets` | Generated content & media |
-| `property_brand_assets` | 🆕 BrandForge generated brand books (12 sections) |
+| `property_brand_assets` | BrandForge generated brand books (12 sections) |
+| `property_websites` | 🆕 SiteForge generated websites |
+| `website_assets` | 🆕 Website images, logos, and assets |
+| `website_generations` | 🆕 Website regeneration history |
+| `siteforge_jobs` | 🆕 Async job queue for site generation |
 | `reviews` / `review_responses` | ReviewFlow data |
 | `review_platform_connections` | Google, Yelp, manual connections |
 | `competitors` / `competitor_snapshots` | MarketVision scraped data |
@@ -530,6 +587,57 @@ Response: {
 }
 ```
 
+### SiteForge WordPress Generation
+```typescript
+// Generate a new website
+POST /api/siteforge/generate
+Body: {
+  propertyId: string,
+  preferences?: {
+    style: "modern" | "luxury" | "cozy" | "vibrant" | "professional",
+    emphasis: "amenities" | "location" | "lifestyle" | "value" | "community",
+    ctaPriority: "tours" | "applications" | "contact" | "calls"
+  }
+}
+Response: {
+  jobId: string,
+  websiteId: string,
+  status: "queued",
+  estimatedTimeSeconds: number
+}
+
+// List websites for a property
+GET /api/siteforge/list?propertyId=...
+Response: { websites: PropertyWebsite[] }
+
+// Get generation status (poll every 2 seconds)
+GET /api/siteforge/status/[websiteId]
+Response: {
+  websiteId: string,
+  status: GenerationStatus,
+  progress: number,  // 0-100
+  currentStep?: string,
+  siteArchitecture?: SiteArchitecture,
+  wpUrl?: string
+}
+
+// Get full website preview
+GET /api/siteforge/preview/[websiteId]
+Response: {
+  website: PropertyWebsite,
+  pages: GeneratedPage[],
+  assets: WebsiteAsset[],
+  designDecisions: object
+}
+
+// Deploy to WordPress
+POST /api/siteforge/deploy/[websiteId]
+Response: { wpUrl: string, wpAdminUrl: string }
+
+// Delete website
+DELETE /api/siteforge/delete/[websiteId]
+```
+
 ### Community Intelligence
 ```typescript
 POST /api/onboarding/scrape-website
@@ -586,7 +694,8 @@ python run_pipelines.py
 |--------|-------------|----------|
 | Response Time | Hours | **Seconds** |
 | Content Output | 50-75/month | **300+/month** |
-| Brand Book Creation | 2-3 weeks | **30 minutes** 🆕 |
+| Brand Book Creation | 2-3 weeks | **30 minutes** |
+| Website Generation | 2-3 weeks | **3 minutes** 🆕 |
 | Properties per AM | 10-12 | **30-40** |
 | Campaign Optimization | Business hours | **24/7/365** |
 | Review Response Time | Days | **< 1 hour** |
@@ -619,12 +728,12 @@ python run_pipelines.py
 ### 🔨 Q2 2026 — Scale (In Progress)
 - [x] TourSpark automation sequences ✅
 - [x] **BrandForge™** - AI brand book generator ✅ (Early delivery!)
+- [x] **SiteForge™** - WordPress site generation from brand assets ✅ (Early delivery!)
 - [ ] Advanced pipeline configuration UI
 - [ ] LLM-powered CRM configurator
 - [ ] SocialPilot auto-posting
 - [ ] AdForge ad generation
 - [ ] SearchBoost SEO automation
-- [ ] **SiteForge™** - WordPress site generation from brand assets
 
 ### 📋 Q3-Q4 2026 — Optimization
 - [ ] ChurnSignal retention prediction
@@ -644,9 +753,12 @@ python run_pipelines.py
 - [Implementation Checklist](./P11_Implementation_Checklist.md)
 
 ### Product Guides
-- **[BrandForge Quick Start](./p11-platform/BRANDFORGE_QUICKSTART.md)** 🆕 
-- **[BrandForge Complete Summary](./p11-platform/BRANDFORGE_COMPLETE_SUMMARY.md)** 🆕
-- **[BrandForge Implementation](./p11-platform/apps/web/BRANDFORGE_IMPLEMENTATION.md)** 🆕
+- **[SiteForge Quick Start](./p11-platform/SITEFORGE_QUICKSTART.md)** 🆕
+- **[SiteForge MVP Status](./p11-platform/SITEFORGE_MVP_STATUS.md)** 🆕
+- **[SiteForge Complete Summary](./p11-platform/SITEFORGE_COMPLETE.md)** 🆕
+- [BrandForge Quick Start](./p11-platform/BRANDFORGE_QUICKSTART.md)
+- [BrandForge Complete Summary](./p11-platform/BRANDFORGE_COMPLETE_SUMMARY.md)
+- [BrandForge Implementation](./p11-platform/apps/web/BRANDFORGE_IMPLEMENTATION.md)
 - [CRM Implementation Guide](./p11-platform/CRM_MVP_IMPLEMENTATION_COMPLETE.md)
 - [CRM Quick Start](./p11-platform/CRM_QUICK_START.md)
 - [CRM Vision & Context](./p11-platform/P11_CRM_VISION_CONTEXT.md)

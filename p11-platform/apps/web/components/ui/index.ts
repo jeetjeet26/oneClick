@@ -1,4 +1,10 @@
 export { ToastProvider, useToast } from './Toast'
 export { ThemeProvider, useTheme } from './ThemeProvider'
 export { ThemeToggle, ThemeToggleCompact } from './ThemeToggle'
-
+export { Badge } from './badge'
+export { Button } from './button'
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card'
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './dialog'
+export { Label } from './label'
+export { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './select'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'

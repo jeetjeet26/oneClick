@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, MessageSquare, BarChart3, Settings, Building2, Users, Sparkles, Activity, Bot, Zap, Flame, TrendingUp, Star, Wand2, Home } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, BarChart3, Settings, Building2, Users, Sparkles, Activity, Bot, Zap, Flame, TrendingUp, Star, Wand2, Home, Globe } from 'lucide-react';
 
 type NavItem = {
   href: string;
@@ -61,6 +61,7 @@ export function Sidebar() {
             <NavLink href="/dashboard/leads" label="TourSpark" icon={<Sparkles size={18} />} />
             <NavLink href="/dashboard/leadpulse" label="LeadPulse" icon={<Flame size={18} />} />
             <NavLink href="/dashboard/forgestudio" label="ForgeStudio AI" icon={<Wand2 size={18} />} />
+            <NavLink href="/dashboard/siteforge" label="SiteForge" icon={<Globe size={18} />} />
             <NavLink href="/dashboard/marketvision" label="MarketVision 360" icon={<TrendingUp size={18} />} />
             <NavLink href="/dashboard/reviewflow" label="ReviewFlow AI" icon={<Star size={18} />} />
             <NavLink href="/dashboard/bi" label="MultiChannel BI" icon={<BarChart3 size={18} />} />
