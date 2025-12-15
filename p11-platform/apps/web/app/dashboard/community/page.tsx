@@ -7,7 +7,8 @@ import {
   ContactsManager,
   IntegrationStatusList,
   KnowledgeSourcesList,
-  OnboardingChecklist
+  OnboardingChecklist,
+  PropertyUnitsCard
 } from '@/components/community'
 import { BrandIdentitySection } from '@/components/community/BrandIdentitySection'
 import { DocumentUploader } from '@/components/luma/DocumentUploader'
@@ -52,6 +53,7 @@ export default function PropertyDashboardPage() {
       progress: number
     }
   }>({ tasks: [], stats: { total: 0, completed: 0, inProgress: 0, pending: 0, blocked: 0, progress: 0 } })
+  const [propertyUnits, setPropertyUnits] = useState<any[]>([])
   
   // Modal states
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -64,24 +66,26 @@ export default function PropertyDashboardPage() {
 
     try {
       // Fetch all data in parallel
-      const [profileRes, contactsRes, integrationsRes, knowledgeRes, tasksRes] = await Promise.all([
+      const [profileRes, contactsRes, integrationsRes, knowledgeRes, tasksRes, unitsRes] = await Promise.all([
         fetch(`/api/community/profile?propertyId=${currentProperty.id}`),
         fetch(`/api/community/contacts?propertyId=${currentProperty.id}`),
         fetch(`/api/community/integrations?propertyId=${currentProperty.id}`),
         fetch(`/api/community/knowledge-sources?propertyId=${currentProperty.id}`),
         fetch(`/api/community/tasks?propertyId=${currentProperty.id}`),
+        fetch(`/api/properties/${currentProperty.id}/units`),
       ])
 
       if (!profileRes.ok || !contactsRes.ok || !integrationsRes.ok || !knowledgeRes.ok || !tasksRes.ok) {
         throw new Error('Failed to fetch community data')
       }
 
-      const [profileData, contactsData, integrationsData, knowledgeDataRes, tasksDataRes] = await Promise.all([
+      const [profileData, contactsData, integrationsData, knowledgeDataRes, tasksDataRes, unitsData] = await Promise.all([
         profileRes.json(),
         contactsRes.json(),
         integrationsRes.json(),
         knowledgeRes.json(),
         tasksRes.json(),
+        unitsRes.json(),
       ])
 
       setProfile(profileData.profile)
@@ -90,6 +94,7 @@ export default function PropertyDashboardPage() {
       setIntegrations(integrationsData.integrations || [])
       setKnowledgeData(knowledgeDataRes)
       setTasksData(tasksDataRes)
+      setPropertyUnits(unitsData.units || [])
     } catch (err) {
       console.error('Error fetching community data:', err)
       setError(err instanceof Error ? err.message : 'Failed to load data')
@@ -260,6 +265,12 @@ export default function PropertyDashboardPage() {
                 propertyId={currentProperty?.id || ''}
                 onRefresh={() => fetchData()}
                 onUploadClick={() => setShowUploadModal(true)}
+              />
+
+              {/* Property Units & Pricing */}
+              <PropertyUnitsCard
+                units={propertyUnits}
+                propertyId={currentProperty?.id || ''}
               />
 
               {/* Upload Section */}

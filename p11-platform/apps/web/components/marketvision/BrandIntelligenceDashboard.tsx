@@ -92,7 +92,6 @@ export function BrandIntelligenceDashboard({
 
   const handleViewDetails = (competitorId: string) => {
     // Could open a modal or navigate to a detail page
-    console.log('View details for:', competitorId)
   }
 
   return (

@@ -212,7 +212,6 @@ async function generateWebsiteAsync(
     
     // 7. Gather and prepare assets
     const assets = await gatherAssets(websiteId, propertyId, pages, supabase)
-    console.log(`Gathered ${assets.length} assets for website`)
     
     // Update status: Ready for Preview (NOT auto-deploying)
     // User must explicitly click "Deploy to WordPress" after reviewing the preview
@@ -382,4 +381,8 @@ async function gatherAssets(
   
   return assets
 }
+
+
+
+
 

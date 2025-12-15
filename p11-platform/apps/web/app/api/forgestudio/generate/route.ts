@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 import { GoogleAuth } from 'google-auth-library'
 import path from 'path'
+import { 
+  uploadAndSaveGeneratedAsset, 
+  STORAGE_BUCKETS 
+} from '@/utils/storage'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,15 +29,15 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS && projectId) {
   })
 }
 
-// Generate image using Google Gemini/Imagen
 // Generate image using Vertex AI Imagen
+// Returns base64 data for storage upload (NOT a data URL)
 async function generateWithGemini(
   prompt: string,
   params: {
     style?: string
     aspectRatio?: string
   }
-): Promise<{ url: string }> {
+): Promise<{ base64Data: string; mimeType: string }> {
   if (!vertexAuth || !projectId) {
     throw new Error('Vertex AI not configured')
   }
@@ -89,9 +93,10 @@ async function generateWithGemini(
     const predictions = data.predictions || []
     
     if (predictions.length > 0 && predictions[0].bytesBase64Encoded) {
-      const base64Data = predictions[0].bytesBase64Encoded
-      const mimeType = predictions[0].mimeType || 'image/png'
-      return { url: `data:${mimeType};base64,${base64Data}` }
+      return {
+        base64Data: predictions[0].bytesBase64Encoded,
+        mimeType: predictions[0].mimeType || 'image/png'
+      }
     }
 
     throw new Error('No image data in response')
@@ -103,6 +108,7 @@ async function generateWithGemini(
 
 // Generate video using Vertex AI Veo 3 (Latest: Dec 2025)
 // Veo 3 features: Enhanced realism, native audio generation, improved prompt adherence, realistic physics
+// Returns base64 data for storage upload (NOT a data URL)
 async function generateVideoWithVertexAI(
   prompt: string,
   params: {
@@ -110,7 +116,7 @@ async function generateVideoWithVertexAI(
     aspectRatio?: string
     sourceImageUrl?: string
   }
-): Promise<{ url: string; thumbnailUrl?: string }> {
+): Promise<{ base64Data: string; mimeType: string; gcsUri?: string }> {
   if (!vertexAuth || !projectId) {
     throw new Error('Vertex AI not configured. Please add GOOGLE_CLOUD_PROJECT_ID and GOOGLE_APPLICATION_CREDENTIALS.')
   }
@@ -208,9 +214,17 @@ async function generateVideoWithVertexAI(
         if (videos.length > 0) {
           const video = videos[0]
           if (video.bytesBase64Encoded) {
-            return { url: `data:${video.mimeType || 'video/mp4'};base64,${video.bytesBase64Encoded}`, thumbnailUrl: undefined }
+            return {
+              base64Data: video.bytesBase64Encoded,
+              mimeType: video.mimeType || 'video/mp4'
+            }
           } else if (video.gcsUri) {
-            return { url: video.gcsUri, thumbnailUrl: undefined }
+            // If video is stored in GCS, return that URI
+            return {
+              base64Data: '',
+              mimeType: 'video/mp4',
+              gcsUri: video.gcsUri
+            }
           }
         }
         throw new Error('No video data in response')
@@ -378,12 +392,38 @@ ${variables?.details ? `Additional details: ${variables.details}` : ''}
               style: mediaStyle || config?.default_style,
               aspectRatio
             })
-            mediaUrls = [geminiResult.url]
-            usedProvider = 'gemini'
+            usedProvider = 'gemini_imagen'
+            
+            // Upload to Supabase Storage and save metadata
+            const uploadResult = await uploadAndSaveGeneratedAsset(
+              geminiResult.base64Data,
+              geminiResult.mimeType,
+              {
+                bucket: STORAGE_BUCKETS.CONTENT_ASSETS,
+                propertyId,
+                folder: 'generated',
+                name: `Generated Image - ${new Date().toISOString()}`,
+                description: mediaPrompt,
+                generationProvider: usedProvider,
+                generationPrompt: mediaPrompt,
+                generationParams: {
+                  type: 'text-to-image',
+                  style: mediaStyle,
+                  aspectRatio
+                },
+                tags: ['ai-generated', 'forgestudio']
+              }
+            )
+            
+            if (uploadResult.success && uploadResult.publicUrl) {
+              mediaUrls = [uploadResult.publicUrl]
+              thumbnailUrl = uploadResult.publicUrl // For images, thumbnail = image
+            } else {
+              console.error('Failed to upload image to storage:', uploadResult.error)
+              throw new Error(uploadResult.error || 'Image upload failed')
+            }
           } catch (geminiError) {
             console.error('Gemini image generation failed:', geminiError)
-            
-            // No fallback - just throw the error
             throw geminiError
           }
         } else if (mediaType === 'video') {
@@ -393,10 +433,42 @@ ${variables?.details ? `Additional details: ${variables.details}` : ''}
             aspectRatio,
             sourceImageUrl
           })
-
-          mediaUrls = [videoResult.url]
-          thumbnailUrl = videoResult.thumbnailUrl || null
           usedProvider = 'vertex_ai_veo'
+
+          // If video was returned as base64, upload to storage
+          if (videoResult.base64Data) {
+            const uploadResult = await uploadAndSaveGeneratedAsset(
+              videoResult.base64Data,
+              videoResult.mimeType,
+              {
+                bucket: STORAGE_BUCKETS.CONTENT_ASSETS,
+                propertyId,
+                folder: 'generated',
+                name: `Generated Video - ${new Date().toISOString()}`,
+                description: mediaPrompt,
+                generationProvider: usedProvider,
+                generationPrompt: mediaPrompt,
+                generationParams: {
+                  type: 'text-to-video',
+                  style: mediaStyle,
+                  aspectRatio,
+                  sourceImageUrl
+                },
+                tags: ['ai-generated', 'forgestudio', 'video'],
+                durationSeconds: 8
+              }
+            )
+            
+            if (uploadResult.success && uploadResult.publicUrl) {
+              mediaUrls = [uploadResult.publicUrl]
+            } else {
+              console.error('Failed to upload video to storage:', uploadResult.error)
+              throw new Error(uploadResult.error || 'Video upload failed')
+            }
+          } else if (videoResult.gcsUri) {
+            // Video is already stored in GCS
+            mediaUrls = [videoResult.gcsUri]
+          }
         } else if (sourceImageUrl) {
           // For image-to-image, use Gemini with source image
           const geminiResult = await generateWithGemini(
@@ -406,29 +478,36 @@ ${variables?.details ? `Additional details: ${variables.details}` : ''}
               aspectRatio
             }
           )
-          mediaUrls = [geminiResult.url]
-          usedProvider = 'gemini'
-        }
-
-        // Save generated asset to content_assets
-        await supabase
-          .from('content_assets')
-          .insert({
-            property_id: propertyId,
-            name: `Generated ${mediaType} - ${new Date().toISOString()}`,
-            description: mediaPrompt,
-            asset_type: mediaType,
-            file_url: mediaUrls[0],
-            thumbnail_url: thumbnailUrl || (mediaType === 'image' ? mediaUrls[0] : null),
-            is_ai_generated: true,
-            generation_provider: usedProvider,
-            generation_prompt: mediaPrompt,
-            generation_params: {
-              type: mediaType === 'image' ? 'text-to-image' : 'text-to-video',
-              style: mediaStyle,
-              sourceImageUrl
+          usedProvider = 'gemini_imagen'
+          
+          // Upload to storage
+          const uploadResult = await uploadAndSaveGeneratedAsset(
+            geminiResult.base64Data,
+            geminiResult.mimeType,
+            {
+              bucket: STORAGE_BUCKETS.CONTENT_ASSETS,
+              propertyId,
+              folder: 'generated',
+              name: `Transformed Image - ${new Date().toISOString()}`,
+              description: mediaPrompt,
+              generationProvider: usedProvider,
+              generationPrompt: mediaPrompt,
+              generationParams: {
+                type: 'image-to-image',
+                style: mediaStyle,
+                sourceImageUrl
+              },
+              tags: ['ai-generated', 'forgestudio', 'transformed']
             }
-          })
+          )
+          
+          if (uploadResult.success && uploadResult.publicUrl) {
+            mediaUrls = [uploadResult.publicUrl]
+            thumbnailUrl = uploadResult.publicUrl
+          } else {
+            throw new Error(uploadResult.error || 'Image upload failed')
+          }
+        }
       } catch (mediaError) {
         console.error('Media generation failed:', mediaError)
         // Continue without media - don't fail the whole request

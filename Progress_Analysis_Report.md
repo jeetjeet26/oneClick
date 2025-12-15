@@ -534,3 +534,6 @@ With focused execution on these four areas, an MVP pilot with 3-5 properties is 
 
 
 
+
+
+

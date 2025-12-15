@@ -137,32 +137,32 @@ async def run_all_pipelines(background_tasks: BackgroundTasks):
     Each pipeline runs in sequence in the background.
     """
     def run_all():
-        print("=" * 60)
-        print("Running ALL Pipelines")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("Running ALL Pipelines")
+        logger.info("=" * 60)
         
         # Import and run each pipeline
         try:
             from pipelines.meta_ads import run_pipeline as run_meta
             run_meta()
         except Exception as e:
-            print(f"Meta pipeline error: {e}")
+            logger.error(f"Meta pipeline error: {e}")
         
         try:
             from pipelines.google_ads import run_pipeline as run_google
             run_google()
         except Exception as e:
-            print(f"Google Ads pipeline error: {e}")
+            logger.error(f"Google Ads pipeline error: {e}")
         
         try:
             from pipelines.ga4 import run_pipeline as run_ga4
             run_ga4()
         except Exception as e:
-            print(f"GA4 pipeline error: {e}")
+            logger.error(f"GA4 pipeline error: {e}")
         
-        print("=" * 60)
-        print("All Pipelines Complete")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("All Pipelines Complete")
+        logger.info("=" * 60)
     
     background_tasks.add_task(run_all)
     return RunAllResponse(
@@ -1164,6 +1164,11 @@ class WebsiteBatchRequest(BaseModel):
     prefer_website: bool = True  # Prefer website over apartments.com
 
 
+class PropertyWebsiteRefreshRequest(BaseModel):
+    property_id: str
+    url: Optional[str] = None  # Override website URL
+
+
 @app.post('/scrape/website/refresh')
 async def refresh_from_website(request: WebsiteRefreshRequest):
     """
@@ -1250,6 +1255,46 @@ async def batch_refresh_from_website(
         'property_id': request.property_id,
         'source': 'website'
     }
+
+
+@app.post('/scrape/property/refresh')
+async def refresh_property_from_website(request: PropertyWebsiteRefreshRequest):
+    """
+    Scrape pricing and floorplan data from the property's own website.
+    
+    This uses the SAME scraping logic as competitors, but stores results
+    in property_units instead of competitor_units.
+    
+    Extracts:
+    - Floor plan types (Studio, 1BR, 2BR, etc.)
+    - Rent ranges (min/max)
+    - Square footage
+    - Move-in specials
+    - Availability
+    
+    Args:
+        property_id: Property UUID
+        url: Optional website URL override
+    """
+    try:
+        from scrapers.coordinator import ScrapingCoordinator
+        
+        proxy_url = os.environ.get('SCRAPER_PROXY_URL')
+        coordinator = ScrapingCoordinator(proxy_url=proxy_url)
+        
+        result = coordinator.refresh_property_from_website(
+            property_id=request.property_id,
+            website_url=request.url
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Property website refresh error: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 
 @app.post('/scrape/refresh-pricing')

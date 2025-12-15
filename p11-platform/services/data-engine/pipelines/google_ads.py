@@ -208,9 +208,9 @@ def run_pipeline():
             else:
                 fail_count += 1
         
-        print(f"\n" + "=" * 60)
-        print(f"Pipeline Complete: {success_count} succeeded, {fail_count} failed")
-        print("=" * 60)
+        logger.info(f"\n" + "=" * 60)
+        logger.info(f"Pipeline Complete: {success_count} succeeded, {fail_count} failed")
+        logger.info("=" * 60)
         
     else:
         # Legacy mode: Single account from env var

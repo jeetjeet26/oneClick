@@ -227,8 +227,6 @@ Current Market Context:
       }
     }
 
-    console.log(`BrandForge conversation using: ${usedModel}`)
-
     // Update brand asset
     const updates: any = {
       gemini_conversation_history: conversationHistory

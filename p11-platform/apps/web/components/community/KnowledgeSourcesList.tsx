@@ -17,9 +17,11 @@ import {
   FolderOpen,
   Home,
   Shield,
-  DollarSign
+  DollarSign,
+  FileEdit
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { ManualPricingModal } from './ManualPricingModal'
 
 type KnowledgeSource = {
   id: string
@@ -81,6 +83,9 @@ export function KnowledgeSourcesList({
   onUploadClick
 }: Props) {
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isScrapingPricing, setIsScrapingPricing] = useState(false)
+  const [scrapeResult, setScrapeResult] = useState<any>(null)
+  const [showManualPricingModal, setShowManualPricingModal] = useState(false)
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -95,6 +100,30 @@ export function KnowledgeSourcesList({
       console.error('Error refreshing knowledge:', error)
     } finally {
       setIsRefreshing(false)
+    }
+  }
+
+  const handleScrapePricing = async () => {
+    setIsScrapingPricing(true)
+    setScrapeResult(null)
+    try {
+      const response = await fetch('/api/properties/scrape-pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId }),
+      })
+      const result = await response.json()
+      setScrapeResult(result)
+      
+      if (result.success) {
+        // Optionally refresh the page data
+        onRefresh?.()
+      }
+    } catch (error) {
+      console.error('Error scraping pricing:', error)
+      setScrapeResult({ success: false, error: 'Failed to scrape pricing' })
+    } finally {
+      setIsScrapingPricing(false)
     }
   }
 
@@ -213,6 +242,23 @@ export function KnowledgeSourcesList({
               </button>
             )}
             <button
+              onClick={handleScrapePricing}
+              disabled={isScrapingPricing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Scrape pricing and floorplan data from property website"
+            >
+              <DollarSign className={`h-4 w-4 ${isScrapingPricing ? 'animate-pulse' : ''}`} />
+              {isScrapingPricing ? 'Scraping...' : 'Scrape Pricing'}
+            </button>
+            <button
+              onClick={() => setShowManualPricingModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+              title="Extract pricing from pasted text using AI"
+            >
+              <FileEdit className="h-4 w-4" />
+              Paste Pricing
+            </button>
+            <button
               onClick={onUploadClick}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
             >
@@ -221,6 +267,28 @@ export function KnowledgeSourcesList({
             </button>
           </div>
         </div>
+
+        {/* Scrape result notification */}
+        {scrapeResult && (
+          <div className={`mx-6 mt-4 p-3 rounded-lg ${
+            scrapeResult.success 
+              ? 'bg-emerald-50 border border-emerald-200' 
+              : 'bg-red-50 border border-red-200'
+          }`}>
+            <p className={`text-sm font-medium ${
+              scrapeResult.success ? 'text-emerald-700' : 'text-red-700'
+            }`}>
+              {scrapeResult.success 
+                ? `✓ Successfully scraped ${scrapeResult.units_found} floor plans from ${scrapeResult.property_name}` 
+                : `✗ ${scrapeResult.error}`}
+            </p>
+            {scrapeResult.success && scrapeResult.floor_plans_found > 0 && (
+              <p className="text-xs text-emerald-600 mt-1">
+                Found {scrapeResult.floor_plans_found} floor plans, {scrapeResult.amenities_found} amenities
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="p-6">
           {sources.length === 0 ? (
@@ -283,6 +351,18 @@ export function KnowledgeSourcesList({
           )}
         </div>
       </div>
+
+      {/* Manual Pricing Modal */}
+      {showManualPricingModal && (
+        <ManualPricingModal
+          propertyId={propertyId}
+          onClose={() => setShowManualPricingModal(false)}
+          onSuccess={() => {
+            setShowManualPricingModal(false)
+            onRefresh?.()
+          }}
+        />
+      )}
     </div>
   )
 }

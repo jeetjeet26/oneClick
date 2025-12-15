@@ -105,8 +105,6 @@ export async function POST(req: NextRequest) {
       )
       
       if (unanalyzedCompetitors.length > 0) {
-        console.log(`Triggering brand intelligence for ${unanalyzedCompetitors.length} unanalyzed competitors`)
-        
         // Trigger brand intelligence jobs (async, non-blocking)
         try {
           await fetch(`${DATA_ENGINE_URL}/scraper/brand-intelligence/batch`, {

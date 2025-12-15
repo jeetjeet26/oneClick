@@ -55,8 +55,6 @@ async function generateImage(
   // As of Dec 2025, imagen-3.0-generate-002 is the latest stable version
   const modelId = 'imagen-3.0-generate-002'
   const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`
-  
-  console.log(`Using Imagen model: ${modelId}`)
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -137,7 +135,6 @@ export async function POST(request: NextRequest) {
       // Generate logo based on brand data
       // Generate 2 variations at a time to stay within quota
       const logoPrompt = buildLogoPrompt(brandData)
-      console.log('Generating logo with prompt:', logoPrompt)
       
       const logoUrls: string[] = []
       
@@ -169,11 +166,9 @@ export async function POST(request: NextRequest) {
               console.error(`Logo variation ${batch * 2 + i} upload failed:`, err)
             }
           }
-          console.log(`Logo batch ${batch + 1}/2 generated: ${images.length} variations`)
         } catch (err: any) {
           console.error(`Logo batch ${batch} failed:`, err?.message || err)
           if (err?.message?.includes('Quota exceeded')) {
-            console.log('Quota exceeded, stopping logo generation')
             break
           }
         }
@@ -199,7 +194,6 @@ export async function POST(request: NextRequest) {
     if (type === 'moodboard') {
       // Generate mood board images - limit to 4 to stay within quota
       const moodPrompts = buildMoodboardPrompts(brandData).slice(0, 4)
-      console.log('Generating moodboard with prompts:', moodPrompts)
 
       const moodboardUrls: string[] = []
 
@@ -224,13 +218,11 @@ export async function POST(request: NextRequest) {
             )
             moodboardUrls.push(url)
             results.push({ type: 'moodboard', url, prompt: moodPrompts[i] })
-            console.log(`Moodboard image ${i + 1}/${moodPrompts.length} generated successfully`)
           }
         } catch (err: any) {
           console.error(`Moodboard image ${i} failed:`, err?.message || err)
           // If quota exceeded, wait longer before next request
           if (err?.message?.includes('Quota exceeded')) {
-            console.log('Quota exceeded, waiting 10 seconds before next request...')
             await new Promise(resolve => setTimeout(resolve, 10000))
           }
         }

@@ -74,6 +74,16 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Include property_units in pricing category
+    const { count: unitsCount } = await adminClient
+      .from('property_units')
+      .select('*', { count: 'exact', head: true })
+      .eq('property_id', propertyId)
+    
+    if (unitsCount && unitsCount > 0) {
+      categories.pricing++ // Count property units as one pricing source
+    }
+
     // Generate AI insights from extracted data
     const insights: string[] = []
     sources?.forEach(source => {
@@ -96,6 +106,28 @@ export async function GET(request: NextRequest) {
         }
       }
     })
+
+    // Add insights from property_units
+    if (unitsCount && unitsCount > 0) {
+      const { data: units } = await adminClient
+        .from('property_units')
+        .select('unit_type, bedrooms, rent_min, rent_max')
+        .eq('property_id', propertyId)
+        .order('bedrooms', { ascending: true })
+        .limit(3)
+
+      if (units && units.length > 0) {
+        const unitSummary = units.map(u => {
+          const rentRange = u.rent_min && u.rent_max && u.rent_min !== u.rent_max
+            ? `$${u.rent_min}-$${u.rent_max}`
+            : u.rent_min 
+            ? `$${u.rent_min}`
+            : 'Call for pricing'
+          return `${u.unit_type} (${u.bedrooms}BR): ${rentRange}`
+        }).join(', ')
+        insights.push(`Floor plans: ${unitSummary}${unitsCount > 3 ? ` +${unitsCount - 3} more` : ''}`)
+      }
+    }
 
     return NextResponse.json({
       sources: sources || [],

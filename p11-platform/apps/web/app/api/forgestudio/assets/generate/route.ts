@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleAuth } from 'google-auth-library'
 import path from 'path'
+import { 
+  uploadAndSaveGeneratedAsset, 
+  STORAGE_BUCKETS 
+} from '@/utils/storage'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -333,21 +337,60 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let result: { url: string; thumbnailUrl?: string; width?: number; height?: number; durationSeconds?: number; base64Data?: string; mimeType?: string }
     let usedProvider = provider || 'gemini'
+    const assetType = generationType.includes('video') ? 'video' : 'image'
+    let publicUrl: string | undefined
+    let thumbnailUrl: string | undefined
+    let savedAsset: Record<string, unknown> | undefined
 
     // Route to appropriate model based on generation type
     if (generationType === 'text-to-image' || generationType === 'image-to-image') {
       // Use Gemini Imagen for image generation
-      result = await generateWithGemini(prompt, {
+      const result = await generateWithGemini(prompt, {
         style,
         aspectRatio,
         negativePrompt
       })
       usedProvider = 'gemini_imagen'
+      
+      // Upload to Supabase Storage and save metadata
+      const uploadResult = await uploadAndSaveGeneratedAsset(
+        result.base64Data!,
+        result.mimeType!,
+        {
+          bucket: STORAGE_BUCKETS.CONTENT_ASSETS,
+          propertyId,
+          folder: folder || 'generated',
+          name: saveName || `AI Generated ${assetType} - ${new Date().toISOString()}`,
+          description: prompt,
+          generationProvider: usedProvider,
+          generationPrompt: prompt,
+          generationParams: {
+            type: generationType,
+            style,
+            quality,
+            aspectRatio,
+            negativePrompt,
+            sourceImageUrl
+          },
+          tags: tags || ['ai-generated', 'forgestudio']
+        }
+      )
+      
+      if (!uploadResult.success) {
+        return NextResponse.json({
+          success: false,
+          error: uploadResult.error || 'Failed to upload asset to storage'
+        }, { status: 500 })
+      }
+      
+      publicUrl = uploadResult.publicUrl
+      thumbnailUrl = uploadResult.publicUrl // For images, thumbnail = image
+      savedAsset = uploadResult.asset
+
     } else if (generationType === 'text-to-video' || generationType === 'image-to-video') {
       // Use Vertex AI Veo for video generation
-      result = await generateVideoWithVertexAI(prompt, {
+      const result = await generateVideoWithVertexAI(prompt, {
         style,
         aspectRatio,
         sourceImageUrl,
@@ -356,6 +399,92 @@ export async function POST(request: NextRequest) {
         includeAudio
       })
       usedProvider = 'vertex_ai_veo'
+      
+      // Check if we got base64 data or a GCS URI
+      if (result.url.startsWith('data:')) {
+        // Extract base64 from data URL
+        const match = result.url.match(/^data:([^;]+);base64,(.+)$/)
+        if (match) {
+          const mimeType = match[1]
+          const base64Data = match[2]
+          
+          // Upload to Supabase Storage
+          const uploadResult = await uploadAndSaveGeneratedAsset(
+            base64Data,
+            mimeType,
+            {
+              bucket: STORAGE_BUCKETS.CONTENT_ASSETS,
+              propertyId,
+              folder: folder || 'generated',
+              name: saveName || `AI Generated Video - ${new Date().toISOString()}`,
+              description: prompt,
+              generationProvider: usedProvider,
+              generationPrompt: prompt,
+              generationParams: {
+                type: generationType,
+                style,
+                quality,
+                aspectRatio,
+                negativePrompt,
+                sourceImageUrl,
+                videoDuration,
+                includeAudio
+              },
+              tags: tags || ['ai-generated', 'forgestudio', 'video'],
+              durationSeconds: result.durationSeconds
+            }
+          )
+          
+          if (!uploadResult.success) {
+            return NextResponse.json({
+              success: false,
+              error: uploadResult.error || 'Failed to upload video to storage'
+            }, { status: 500 })
+          }
+          
+          publicUrl = uploadResult.publicUrl
+          savedAsset = uploadResult.asset
+        }
+      } else if (result.url.startsWith('gs://')) {
+        // GCS URI - the video is already stored in Google Cloud Storage
+        // Save the reference to our database
+        const { data: asset, error: assetError } = await supabase
+          .from('content_assets')
+          .insert({
+            property_id: propertyId,
+            name: saveName || `AI Generated Video - ${new Date().toISOString()}`,
+            description: prompt,
+            asset_type: 'video',
+            file_url: result.url, // GCS URI
+            duration_seconds: result.durationSeconds,
+            is_ai_generated: true,
+            generation_provider: usedProvider,
+            generation_prompt: prompt,
+            generation_params: {
+              type: generationType,
+              style,
+              quality,
+              aspectRatio,
+              negativePrompt,
+              sourceImageUrl,
+              videoDuration,
+              includeAudio
+            },
+            tags: tags || ['ai-generated', 'forgestudio', 'video'],
+            folder: folder || 'generated'
+          })
+          .select()
+          .single()
+        
+        if (assetError) {
+          console.error('Error saving GCS video asset:', assetError)
+        }
+        
+        publicUrl = result.url
+        savedAsset = asset || undefined
+      }
+      
+      thumbnailUrl = result.thumbnailUrl
     } else {
       return NextResponse.json(
         { error: 'Invalid generation type' },
@@ -363,64 +492,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Determine asset type
-    const assetType = generationType.includes('video') ? 'video' : 'image'
-
-    // If we got base64 data from Gemini, we might want to upload to storage
-    // For now, we'll use the data URL directly
-    const fileUrl = result.url
-
-    // Save to content_assets
-    const { data: asset, error: assetError } = await supabase
-      .from('content_assets')
-      .insert({
-        property_id: propertyId,
-        name: saveName || `AI Generated ${assetType} - ${new Date().toISOString()}`,
-        description: prompt,
-        asset_type: assetType,
-        file_url: fileUrl,
-        thumbnail_url: result.thumbnailUrl || (assetType === 'image' ? fileUrl : null),
-        width: result.width,
-        height: result.height,
-        duration_seconds: result.durationSeconds,
-        is_ai_generated: true,
-        generation_provider: usedProvider,
-        generation_prompt: prompt,
-        generation_params: {
-          type: generationType,
-          style,
-          quality,
-          aspectRatio,
-          negativePrompt,
-          sourceImageUrl
-        },
-        tags: tags || ['ai-generated'],
-        folder
-      })
-      .select()
-      .single()
-
-    if (assetError) {
-      console.error('Error saving asset:', assetError)
-      // Return the generated URL even if save fails
-      return NextResponse.json({
-        success: true,
-        generated: true,
-        saved: false,
-        url: fileUrl,
-        thumbnailUrl: result.thumbnailUrl,
-        provider: usedProvider,
-        error: 'Asset generated but failed to save to database'
-      })
-    }
-
     return NextResponse.json({
       success: true,
       generated: true,
-      saved: true,
-      asset,
-      url: fileUrl,
-      thumbnailUrl: result.thumbnailUrl,
+      saved: !!savedAsset,
+      asset: savedAsset,
+      url: publicUrl,
+      thumbnailUrl,
       provider: usedProvider
     })
 

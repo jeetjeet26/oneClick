@@ -3,6 +3,11 @@ import { createServiceClient } from '@/utils/supabase/admin'
 import { createClient } from '@/utils/supabase/server'
 import OpenAI from 'openai'
 import { extractText } from 'unpdf'
+import { 
+  uploadFileAsset, 
+  STORAGE_BUCKETS,
+  getMimeTypeFromExtension
+} from '@/utils/storage'
 
 const MAX_CHUNK = 800
 const CHUNK_OVERLAP = 100
@@ -91,7 +96,38 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Extract text content based on file type
+    const supabase = createServiceClient()
+    const documentTitle = title || file.name.replace(/\.[^/.]+$/, '')
+    
+    // =============================================
+    // STEP 1: Store the original file in Supabase Storage
+    // =============================================
+    let originalFileUrl: string | undefined
+    let originalFilePath: string | undefined
+    
+    try {
+      const mimeType = file.type || getMimeTypeFromExtension(file.name)
+      const uploadResult = await uploadFileAsset(file, {
+        bucket: STORAGE_BUCKETS.DOCUMENTS,
+        propertyId,
+        folder: 'uploads',
+        contentType: mimeType
+      })
+      
+      if (uploadResult.success && uploadResult.publicUrl) {
+        originalFileUrl = uploadResult.publicUrl
+        originalFilePath = uploadResult.storagePath
+        console.log(`Original file stored: ${originalFilePath}`)
+      } else {
+        console.warn('Failed to store original file, continuing with text extraction:', uploadResult.error)
+      }
+    } catch (uploadError) {
+      console.warn('Error uploading original file, continuing with text extraction:', uploadError)
+    }
+
+    // =============================================
+    // STEP 2: Extract text content for embeddings
+    // =============================================
     let textContent: string
     
     if (isPdf) {
@@ -115,7 +151,6 @@ export async function POST(req: NextRequest) {
       .trim()
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    const supabase = createServiceClient()
 
     // Chunk the text
     const chunks = chunkText(textContent)
@@ -126,7 +161,9 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Generate embeddings in batches (OpenAI allows up to 2048 inputs)
+    // =============================================
+    // STEP 3: Generate embeddings
+    // =============================================
     const BATCH_SIZE = 100
     const allEmbeddings: number[][] = []
 
@@ -139,8 +176,10 @@ export async function POST(req: NextRequest) {
       allEmbeddings.push(...embeddingResponse.data.map(e => e.embedding))
     }
 
-    // Prepare documents for insertion
-    const documentTitle = title || file.name.replace(/\.[^/.]+$/, '')
+    // =============================================
+    // STEP 4: Store document chunks with embeddings
+    // Include reference to original file
+    // =============================================
     const payload = chunks.map((chunk, idx) => ({
       content: chunk,
       metadata: { 
@@ -153,6 +192,12 @@ export async function POST(req: NextRequest) {
       },
       property_id: propertyId,
       embedding: allEmbeddings[idx],
+      // New fields for original file reference
+      original_file_url: originalFileUrl,
+      original_file_path: originalFilePath,
+      original_file_name: file.name,
+      original_file_size: file.size,
+      original_file_type: file.type || getMimeTypeFromExtension(file.name),
     }))
 
     // Insert into database
@@ -169,6 +214,8 @@ export async function POST(req: NextRequest) {
       title: documentTitle,
       chunks: chunks.length,
       characters: textContent.length,
+      originalFileUrl,
+      originalFileStored: !!originalFileUrl,
     })
   } catch (error) {
     console.error('Document upload error:', error)

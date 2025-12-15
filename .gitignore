@@ -69,6 +69,15 @@ yarn-error.log*
 *.log
 Thumbs.db
 
+# WordPress Plugin - Distributed separately
+lumaleasing-wordpress/
+lumaleasing-wordpress-*.zip
+LUMALEASING_WORDPRESS_COMPLETE.md
+client_secret_*.json
+
+
+
+
 
 
 

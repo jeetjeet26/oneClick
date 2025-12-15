@@ -468,3 +468,6 @@ function getIconEmoji(iconClass: string): string {
   return iconMap[iconClass] || '✨'
 }
 
+
+
+
