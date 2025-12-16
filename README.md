@@ -58,7 +58,6 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 |---------|-------------|--------|
 | **TourSpark™ CRM** | Complete lead management with activity timeline, automated workflows, and tour scheduling | ✅ Live |
 | **LumaLeasing™** | 24/7 AI chatbot with RAG for instant prospect responses | ✅ Live |
-| **└─ WordPress Plugin** | Easy-install plugin package for WordPress developers - [See Plugin →](./lumaleasing-wordpress/) | 🆕 Ready |
 | **LeadPulse™** | Predictive lead scoring with engagement & behavior analysis | ✅ Live |
 
 ### Content Factory
@@ -80,49 +79,6 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 | **MultiChannel BI** | Unified analytics with natural language queries | ✅ Live |
 | **MarketVision 360™** | Competitor scraping + Brand Intelligence AI analysis | ✅ Live |
 | **Community Intelligence** | Website scraping + Knowledge base auto-population | ✅ Live |
-
----
-
-## ✨ Latest Updates (Dec 2025)
-
-### 💬 LumaLeasing WordPress Plugin! (Dec 15, 2025)
-**WordPress developers can now install LumaLeasing in one click!**
-
-#### What is the WordPress Plugin?
-
-A production-ready WordPress plugin that makes installing LumaLeasing AI chatbot as easy as uploading a .zip file. No manual code editing required!
-
-#### Features ✅
-
-* **One-Click Installation** - Upload, activate, enter API key, done!
-* **Admin Settings Page** - Configure everything from WordPress admin (Settings → LumaLeasing)
-* **API Key Validator** - Test connection button verifies setup instantly
-* **Shortcode Support** - `[lumaleasing]` works anywhere in posts/pages
-* **WordPress Widget** - Add to sidebars/footer via Appearance → Widgets
-* **Position Control** - Choose bottom-right or bottom-left
-* **Enable/Disable Toggle** - Turn widget on/off without losing configuration
-* **Embed Code Generator** - Copy/paste code for non-WordPress pages
-* **Translation Ready** - Full i18n support with POT file
-* **Developer Hooks** - Filters and actions for customization
-
-#### Technical Implementation
-
-* **Plugin Structure:** 10 PHP classes following WordPress coding standards
-* **Admin UI:** Professional settings page matching WordPress design patterns
-* **AJAX Validation:** Real-time API key testing
-* **Documentation:** 4 comprehensive guides (README, Installation, Developer, Troubleshooting)
-* **Security:** Nonce verification, capability checks, sanitized inputs
-* **Performance:** <50KB, async loading, no frontend database queries
-
-#### What This Means
-
-* 🚀 WordPress developers get LumaLeasing running in 5 minutes
-* 📦 Distributable .zip package for clients
-* 🎨 All chatbot customization stays in P11 Dashboard
-* 🔄 Plugin updates independent from chatbot features
-* 🌐 Works with any WordPress theme or hosting
-
-**Location:** [`./lumaleasing-wordpress/`](./lumaleasing-wordpress/)
 
 ---
 
@@ -341,12 +297,6 @@ An AI-powered brand book generator that creates comprehensive brand guidelines t
 
 ```
 oneClick/
-├── lumaleasing-wordpress/          # 🆕 WordPress Plugin Package
-│   ├── lumaleasing.php            # Main plugin file
-│   ├── includes/                  # Core classes
-│   ├── admin/                     # Admin UI & settings
-│   ├── docs/                      # Installation & developer guides
-│   └── languages/                 # Translation files
 ├── p11-platform/
 │   ├── apps/
 │   │   └── web/                    # Next.js 16 Dashboard
@@ -915,11 +865,6 @@ python run_pipelines.py
 - [Implementation Checklist](./P11_Implementation_Checklist.md)
 
 ### Product Guides
-- **[LumaLeasing WordPress Plugin](./lumaleasing-wordpress/)** 🆕
-  - [Quick Start Guide](./lumaleasing-wordpress/QUICKSTART.md)
-  - [Installation Guide](./lumaleasing-wordpress/docs/INSTALLATION.md)
-  - [Developer Guide](./lumaleasing-wordpress/docs/DEVELOPER.md)
-  - [Architecture Documentation](./lumaleasing-wordpress/ARCHITECTURE.md)
 - **[SiteForge Quick Start](./p11-platform/SITEFORGE_QUICKSTART.md)** 🆕
 - **[SiteForge MVP Status](./p11-platform/SITEFORGE_MVP_STATUS.md)** 🆕
 - **[SiteForge Complete Summary](./p11-platform/SITEFORGE_COMPLETE.md)** 🆕
