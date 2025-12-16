@@ -31,6 +31,7 @@ export type EntityType =
   | 'settings'
   | 'organization'
   | 'goal'
+  | 'ad_account_connection'
 
 interface AuditLogParams {
   action: AuditAction
@@ -182,7 +183,8 @@ export function formatEntityType(entityType: EntityType): string {
     workflow: 'Workflow',
     settings: 'Settings',
     organization: 'Organization',
-    goal: 'Goal'
+    goal: 'Goal',
+    ad_account_connection: 'Ad Account Connection'
   }
   return entityLabels[entityType] || entityType
 }
@@ -236,6 +238,7 @@ export function getAuditActionColor(action: AuditAction): string {
   }
   return colors[action] || 'text-slate-600 bg-slate-50'
 }
+
 
 
 

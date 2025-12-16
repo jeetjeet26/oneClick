@@ -43,3 +43,6 @@ google-credentials.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*.local

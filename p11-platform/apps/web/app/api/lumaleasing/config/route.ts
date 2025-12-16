@@ -85,7 +85,11 @@ export async function GET(req: NextRequest) {
         collectPhone: config.collect_phone,
         leadCapturePrompt: config.lead_capture_prompt,
         toursEnabled: config.tours_enabled,
-        propertyName: config.properties?.name,
+        propertyName: (() => {
+          const props = config.properties
+          if (Array.isArray(props)) return props[0]?.name
+          return (props as any)?.name
+        })(),
       },
       isOnline: isWithinBusinessHours,
       businessHours: config.business_hours,

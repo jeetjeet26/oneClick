@@ -309,19 +309,19 @@ export function MarketAlertsList({
                     {/* Price change details */}
                     {(alert.alertType === 'price_drop' || alert.alertType === 'price_increase') && alert.data && (
                       <div className="flex items-center gap-4 text-sm">
-                        {alert.data.old_price && (
+                        {typeof alert.data.old_price === 'number' && (
                           <span className="text-gray-500 line-through">
                             ${(alert.data.old_price as number).toLocaleString()}
                           </span>
                         )}
-                        {alert.data.new_price && (
+                        {typeof alert.data.new_price === 'number' && (
                           <span className={`font-medium ${
                             alert.alertType === 'price_drop' ? 'text-green-600' : 'text-red-600'
                           }`}>
                             ${(alert.data.new_price as number).toLocaleString()}
                           </span>
                         )}
-                        {alert.data.change_percent && (
+                        {typeof alert.data.change_percent === 'number' && (
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                             alert.alertType === 'price_drop' 
                               ? 'bg-green-100 text-green-700' 

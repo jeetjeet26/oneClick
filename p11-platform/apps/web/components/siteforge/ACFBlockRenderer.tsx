@@ -98,17 +98,19 @@ function HeroSlides({ content }: { content: any }) {
  * Text Section - Headline + content block
  */
 function TextSection({ content }: { content: any }) {
-  const bgClass = {
+  const bgClasses: Record<string, string> = {
     white: 'bg-white dark:bg-gray-900',
     light: 'bg-gray-50 dark:bg-gray-800',
     dark: 'bg-gray-900 dark:bg-black text-white'
-  }[content.background] || 'bg-white dark:bg-gray-900'
+  }
+  const bgClass = bgClasses[String(content.background)] || 'bg-white dark:bg-gray-900'
   
-  const alignClass = {
+  const alignClasses: Record<string, string> = {
     center: 'text-center mx-auto',
     left: 'text-left',
     right: 'text-right ml-auto'
-  }[content.layout] || 'text-center mx-auto'
+  }
+  const alignClass = alignClasses[String(content.layout)] || 'text-center mx-auto'
 
   return (
     <div className={`p-6 md:p-8 rounded-lg ${bgClass}`}>
@@ -132,11 +134,12 @@ function ContentGrid({ content }: { content: any }) {
   const items = content.items || []
   const cols = content.columns || 3
   
-  const colsClass = {
-    2: 'md:grid-cols-2',
-    3: 'md:grid-cols-3',
-    4: 'md:grid-cols-4'
-  }[cols] || 'md:grid-cols-3'
+  const colsClasses: Record<string, string> = {
+    '2': 'md:grid-cols-2',
+    '3': 'md:grid-cols-3',
+    '4': 'md:grid-cols-4'
+  }
+  const colsClass = colsClasses[String(cols)] || 'md:grid-cols-3'
 
   return (
     <div className={`grid grid-cols-1 ${colsClass} gap-6 p-4`}>
@@ -336,11 +339,12 @@ function AccordionSection({ content }: { content: any }) {
  * Image Section - Single image
  */
 function ImageSection({ content }: { content: any }) {
-  const sizeClass = {
+  const sizeClasses: Record<string, string> = {
     full: 'w-full',
     large: 'max-w-4xl mx-auto',
     medium: 'max-w-2xl mx-auto'
-  }[content.size] || 'max-w-4xl mx-auto'
+  }
+  const sizeClass = sizeClasses[String(content.size)] || 'max-w-4xl mx-auto'
 
   return (
     <div className={`p-4 ${sizeClass}`}>
@@ -467,6 +471,9 @@ function getIconEmoji(iconClass: string): string {
   
   return iconMap[iconClass] || '✨'
 }
+
+
+
 
 
 

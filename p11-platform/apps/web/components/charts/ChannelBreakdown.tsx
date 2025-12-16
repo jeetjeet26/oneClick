@@ -111,10 +111,14 @@ export function ChannelBreakdown({
             }}
             labelStyle={{ color: '#94a3b8', marginBottom: '8px' }}
             itemStyle={{ color: '#fff' }}
-            formatter={(value: number) => [
-              `${config.prefix}${value.toLocaleString()}${config.suffix}`,
-              config.label
-            ]}
+            formatter={(value) => {
+              const numeric =
+                typeof value === 'number' ? value : Number(value ?? 0)
+              return [
+                `${config.prefix}${numeric.toLocaleString()}${config.suffix}`,
+                config.label
+              ] as [string, string]
+            }}
           />
           
           <Bar dataKey={metric} radius={[0, 4, 4, 0]} maxBarSize={32}>
@@ -145,6 +149,8 @@ export function ChannelBreakdown({
     </div>
   )
 }
+
+
 
 
 

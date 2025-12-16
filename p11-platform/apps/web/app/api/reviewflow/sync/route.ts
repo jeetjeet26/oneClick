@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
                 console.warn('Google scraper failed, falling back to API:', scraperError)
                 // Fall back to API if scraper fails and connection type is 'both'
                 if (connectionType === 'both' && connection.place_id) {
-                  reviews = await fetchGoogleReviewsViaAPI(connection.place_id, connection.api_key)
+                  reviews = await fetchGoogleReviewsViaAPI(connection.place_id)
                   syncMethod = 'api'
                 } else {
                   throw scraperError
@@ -329,7 +329,7 @@ export async function POST(request: NextRequest) {
             if (!connection.place_id) {
               throw new Error('Google Place ID not configured')
             }
-            reviews = await fetchGoogleReviewsViaAPI(connection.place_id, connection.api_key)
+            reviews = await fetchGoogleReviewsViaAPI(connection.place_id)
             syncMethod = 'api'
           }
           break

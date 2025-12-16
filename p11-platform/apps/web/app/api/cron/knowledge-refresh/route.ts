@@ -79,9 +79,10 @@ export async function GET(request: NextRequest) {
     for (const source of staleSources) {
       try {
         if (!source.source_url) {
+          const props = Array.isArray(source.properties) ? source.properties[0] : source.properties
           results.push({
             propertyId: source.property_id,
-            propertyName: (source.properties as { name: string })?.name || 'Unknown',
+            propertyName: props?.name || 'Unknown',
             success: false,
             error: 'No source URL configured',
           })
@@ -104,9 +105,10 @@ export async function GET(request: NextRequest) {
 
         if (!scrapeResponse.ok) {
           const errorData = await scrapeResponse.json()
+          const props = Array.isArray(source.properties) ? source.properties[0] : source.properties
           results.push({
             propertyId: source.property_id,
-            propertyName: (source.properties as { name: string })?.name || 'Unknown',
+            propertyName: props?.name || 'Unknown',
             success: false,
             error: errorData.error || 'Scrape failed',
           })
@@ -126,9 +128,10 @@ export async function GET(request: NextRequest) {
           })
           .eq('id', source.id)
 
+        const props = Array.isArray(source.properties) ? source.properties[0] : source.properties
         results.push({
           propertyId: source.property_id,
-          propertyName: (source.properties as { name: string })?.name || 'Unknown',
+          propertyName: props?.name || 'Unknown',
           success: true,
           changes: scrapeResult.changes || [],
         })
@@ -142,9 +145,10 @@ export async function GET(request: NextRequest) {
 
       } catch (error) {
         console.error(`Error processing property ${source.property_id}:`, error)
+        const props = Array.isArray(source.properties) ? source.properties[0] : source.properties
         results.push({
           propertyId: source.property_id,
-          propertyName: (source.properties as { name: string })?.name || 'Unknown',
+          propertyName: props?.name || 'Unknown',
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
         })

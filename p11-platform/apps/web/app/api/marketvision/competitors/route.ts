@@ -71,12 +71,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Build query - include brand intelligence for highlighted amenities
+    // NOTE: Supabase's typed select-string parser is whitespace sensitive in some setups,
+    // so keep the select strings compact (no spaces after commas).
+    const select = includeUnits
+      ? '*,units:competitor_units(*),brand_intel:competitor_brand_intelligence(highlighted_amenities)'
+      : '*,brand_intel:competitor_brand_intelligence(highlighted_amenities)'
+
     let query = supabase
       .from('competitors')
-      .select(includeUnits 
-        ? '*, units:competitor_units(*), brand_intel:competitor_brand_intelligence(highlighted_amenities)' 
-        : '*, brand_intel:competitor_brand_intelligence(highlighted_amenities)'
-      )
+      .select(select)
       .eq('property_id', propertyId)
       .order('name', { ascending: true })
 
@@ -92,7 +95,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      competitors: competitors?.map(formatCompetitor) || [],
+      competitors: (competitors || []).map((c) => formatCompetitor(c as unknown as Record<string, unknown>)),
       count: competitors?.length || 0
     })
   } catch (error) {

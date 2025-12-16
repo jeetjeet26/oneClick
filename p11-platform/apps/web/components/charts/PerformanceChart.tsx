@@ -103,7 +103,11 @@ export function PerformanceChart({
             }}
             labelStyle={{ color: '#94a3b8', marginBottom: '8px' }}
             itemStyle={{ color: '#fff' }}
-            formatter={(value: number) => [value.toLocaleString(), '']}
+            formatter={(value) => {
+              const numeric =
+                typeof value === 'number' ? value : Number(value ?? 0)
+              return [numeric.toLocaleString(), ''] as [string, '']
+            }}
             labelFormatter={(label) => label}
           />
           
@@ -130,6 +134,8 @@ export function PerformanceChart({
     </div>
   )
 }
+
+
 
 
 

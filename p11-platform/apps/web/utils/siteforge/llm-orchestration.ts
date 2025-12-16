@@ -130,12 +130,15 @@ OUTPUT FORMAT (JSON):
 
 IMPORTANT: Be direct and concise. Plan a site that converts prospects to tours.`
 
+  // NOTE: Gemini "thinking" config support may lag in @google/generative-ai TypeScript types.
+  // We pass it through with a cast so builds don't break while keeping the runtime option.
   const result = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
+      // @ts-ignore - SDK typings may not include thinkingConfig yet
       thinkingConfig: { thinkingLevel: 'high' } // Deep reasoning for architecture
     }
-  })
+  } as any)
   
   const responseText = result.response.text()
   const cleanedJson = extractJsonFromResponse(responseText)
@@ -176,9 +179,10 @@ export async function generateAllPageContent(
   const result = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
+      // @ts-ignore - SDK typings may not include thinkingConfig yet
       thinkingConfig: { thinkingLevel: 'medium' } // Balance quality and speed
     }
-  })
+  } as any)
   
   const responseText = result.response.text()
   const cleanedJson = extractJsonFromResponse(responseText)

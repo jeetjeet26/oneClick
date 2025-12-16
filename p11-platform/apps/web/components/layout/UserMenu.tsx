@@ -4,6 +4,7 @@ import { User } from '@supabase/supabase-js'
 import { signOut } from '@/app/auth/actions'
 import { useState, useRef, useEffect } from 'react'
 import { User as UserIcon, LogOut, Settings, ChevronDown } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 type UserMenuProps = {
   user: User
@@ -12,6 +13,7 @@ type UserMenuProps = {
 export function UserMenu({ user }: UserMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -59,14 +61,20 @@ export function UserMenu({ user }: UserMenuProps) {
           
           <div className="py-1">
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setIsOpen(false)
+                router.push('/dashboard/profile')
+              }}
               className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
             >
               <UserIcon size={16} className="text-slate-400" />
               Profile
             </button>
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setIsOpen(false)
+                router.push('/dashboard/settings')
+              }}
               className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
             >
               <Settings size={16} className="text-slate-400" />

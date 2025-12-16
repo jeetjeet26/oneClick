@@ -219,11 +219,12 @@ export async function GET(request: NextRequest) {
       const connection = existingConnections?.find(
         (c) => c.account_id === account.customer_id
       )
+      const props = connection?.properties ? (Array.isArray(connection.properties) ? connection.properties[0] : connection.properties) : null
       return {
         ...account,
         linked: !!connection,
         linked_property_id: connection?.property_id || null,
-        linked_property_name: (connection?.properties as { name: string } | null)?.name || null,
+        linked_property_name: props?.name || null,
       }
     })
 

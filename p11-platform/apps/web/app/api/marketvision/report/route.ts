@@ -162,7 +162,11 @@ export async function GET(req: NextRequest) {
     const recentChanges: MarketReport['recentChanges'] = (alerts || [])
       .filter(a => a.data && (a.data as Record<string, unknown>).old_price && (a.data as Record<string, unknown>).new_price)
       .map(a => ({
-        competitor: (a.competitor as Record<string, unknown>)?.name as string || 'Unknown',
+        competitor: (() => {
+          const c = a.competitor as unknown
+          const competitorObj = Array.isArray(c) ? c[0] : c
+          return (competitorObj as any)?.name as string || 'Unknown'
+        })(),
         type: a.alert_type as 'price_drop' | 'price_increase',
         oldValue: (a.data as Record<string, unknown>).old_price as number,
         newValue: (a.data as Record<string, unknown>).new_price as number,

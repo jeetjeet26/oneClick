@@ -204,7 +204,11 @@ export function RentComparisonChart({
                 tick={{ fontSize: 12 }}
               />
               <Tooltip 
-                formatter={(value: number) => [`$${value.toLocaleString()}`, 'Avg Rent']}
+                formatter={(value) => {
+                  const numeric =
+                    typeof value === 'number' ? value : Number(value ?? 0)
+                  return [`$${numeric.toLocaleString()}`, 'Avg Rent'] as [string, 'Avg Rent']
+                }}
                 labelFormatter={(label) => {
                   const item = chartData.find(d => d.name === label)
                   return item?.fullName || label

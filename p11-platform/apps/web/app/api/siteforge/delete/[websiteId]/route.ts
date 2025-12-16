@@ -5,6 +5,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
+type WebsiteWithOrg = {
+  id: string
+  properties: { org_id: string | null } | Array<{ org_id: string | null }>
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ websiteId: string }> }
@@ -45,7 +50,14 @@ export async function DELETE(
       .eq('id', user.id)
       .single()
 
-    if (profile?.org_id !== website.properties.org_id) {
+    const websiteProperties = (website as WebsiteWithOrg).properties
+    const websiteOrgId = Array.isArray(websiteProperties)
+      ? websiteProperties[0]?.org_id
+      : websiteProperties?.org_id
+
+    const profileOrgId = (profile as { org_id: string | null } | null)?.org_id
+
+    if (!websiteOrgId || !profileOrgId || profileOrgId !== websiteOrgId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
@@ -70,6 +82,9 @@ export async function DELETE(
     )
   }
 }
+
+
+
 
 
 

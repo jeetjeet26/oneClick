@@ -340,10 +340,14 @@ export function CampaignDetailDrawer({
                         boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
                       }}
                       labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                      formatter={(value: number) => [
-                        metricConfig[selectedMetric].format(value),
-                        metricConfig[selectedMetric].label
-                      ]}
+                      formatter={(value) => {
+                        const numeric =
+                          typeof value === 'number' ? value : Number(value ?? 0)
+                        return [
+                          metricConfig[selectedMetric].format(numeric),
+                          metricConfig[selectedMetric].label
+                        ] as [string, string]
+                      }}
                     />
                     <Area
                       type="monotone"

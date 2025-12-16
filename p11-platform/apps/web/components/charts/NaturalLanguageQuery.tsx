@@ -349,7 +349,11 @@ export function NaturalLanguageQuery({ propertyId, onQueryResult }: NaturalLangu
                 contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
                 labelStyle={{ color: '#94a3b8' }}
                 itemStyle={{ color: '#fff' }}
-                formatter={(value: number) => [formatValue(value), '']}
+                formatter={(value) => {
+                  const numeric =
+                    typeof value === 'number' ? value : Number(value ?? 0)
+                  return [formatValue(numeric), ''] as [string, '']
+                }}
               />
               <Legend />
               {numericKeys.slice(0, 3).map((key, idx) => (
@@ -402,7 +406,11 @@ export function NaturalLanguageQuery({ propertyId, onQueryResult }: NaturalLangu
                 contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
                 labelStyle={{ color: '#94a3b8' }}
                 itemStyle={{ color: '#fff' }}
-                formatter={(value: number) => [formatValue(value), '']}
+                formatter={(value) => {
+                  const numeric =
+                    typeof value === 'number' ? value : Number(value ?? 0)
+                  return [formatValue(numeric), ''] as [string, '']
+                }}
               />
               <Legend />
               {numericKeys.slice(0, 3).map((key, idx) => (
@@ -431,7 +439,9 @@ export function NaturalLanguageQuery({ propertyId, onQueryResult }: NaturalLangu
                 cx="50%"
                 cy="50%"
                 outerRadius={100}
-                label={({ name, percent }) => `${String(name).substring(0, 10)} (${(percent * 100).toFixed(0)}%)`}
+                label={({ name, percent }) =>
+                  `${String(name).substring(0, 10)} (${(((percent ?? 0) as number) * 100).toFixed(0)}%)`
+                }
                 labelLine={{ stroke: '#94a3b8' }}
               >
                 {result.data.map((_, index) => (
@@ -442,7 +452,11 @@ export function NaturalLanguageQuery({ propertyId, onQueryResult }: NaturalLangu
                 contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
                 labelStyle={{ color: '#94a3b8' }}
                 itemStyle={{ color: '#fff' }}
-                formatter={(value: number) => [formatValue(value), '']}
+                formatter={(value) => {
+                  const numeric =
+                    typeof value === 'number' ? value : Number(value ?? 0)
+                  return [formatValue(numeric), ''] as [string, '']
+                }}
               />
               <Legend />
             </RechartsPieChart>

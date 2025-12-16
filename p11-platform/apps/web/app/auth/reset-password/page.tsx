@@ -1,20 +1,27 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { resetPassword, type AuthState } from '../actions'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { Suspense } from 'react'
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const [state, formAction, isPending] = useActionState<AuthState | null, FormData>(resetPassword, null)
   const [sessionError, setSessionError] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(true)
   const searchParams = useSearchParams()
   const code = searchParams.get('code')
+  const hasExchangedRef = useRef(false)
 
   useEffect(() => {
     async function verifyCode() {
+      // In Next.js dev (React Strict Mode), effects can run twice.
+      // `exchangeCodeForSession` is one-time-use, so guard against double execution.
+      if (hasExchangedRef.current) return
+      hasExchangedRef.current = true
+
       if (!code) {
         setSessionError('No reset code provided. Please request a new password reset link.')
         setIsVerifying(false)
@@ -223,6 +230,18 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+      </div>
+    }>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }
 

@@ -52,7 +52,8 @@ export async function GET(
       .single()
 
     // Generate calendar links for each tour (Calendly-style)
-    const property = (lead?.property as { id: string; name?: string; address?: { street?: string; full?: string } }) || {}
+    const propertyData = lead?.property ? (Array.isArray(lead.property) ? lead.property[0] : lead.property) : null
+    const property: { name?: string; address?: { street?: string; full?: string } } = propertyData || {}
     const toursWithCalendar = (tours || []).map(tour => {
       // Only generate links for upcoming tours
       if (['scheduled', 'confirmed'].includes(tour.status)) {

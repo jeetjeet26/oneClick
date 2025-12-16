@@ -157,13 +157,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Extract property info
-    const property = config.properties as { 
+    const propertyData = config.properties ? (Array.isArray(config.properties) ? config.properties[0] : config.properties) : null
+    const property: { 
       id: string
       name: string
       address?: { street?: string; full?: string }
       contact_email?: string
       website_url?: string 
-    } | null;
+    } | null = propertyData || null;
 
     // Verify slot is available
     const { data: slot } = await supabase

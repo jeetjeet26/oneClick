@@ -173,10 +173,13 @@ export function PriceTrendChart({ propertyId, unitTypeFilter }: PriceTrendChartP
                 domain={['dataMin - 50', 'dataMax + 50']}
               />
               <Tooltip
-                formatter={(value: number, name: string) => [
-                  `$${value.toLocaleString()}`,
-                  name === 'avgRent' ? 'Average' : name === 'minRent' ? 'Minimum' : 'Maximum'
-                ]}
+                formatter={(value, name) => {
+                  const numeric =
+                    typeof value === 'number' ? value : Number(value ?? 0)
+                  const label =
+                    name === 'avgRent' ? 'Average' : name === 'minRent' ? 'Minimum' : 'Maximum'
+                  return [`$${numeric.toLocaleString()}`, label] as [string, string]
+                }}
                 contentStyle={{
                   backgroundColor: 'rgba(255, 255, 255, 0.95)',
                   border: '1px solid #e5e7eb',

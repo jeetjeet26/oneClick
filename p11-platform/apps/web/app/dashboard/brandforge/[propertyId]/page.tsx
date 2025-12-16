@@ -402,27 +402,30 @@ export default function BrandBookViewerPage({
 
       if (competitors) {
         // Transform to BrandForgeCompetitor format
-        const enrichedCompetitors = competitors.map(c => ({
-          id: c.id,
-          name: c.name,
-          address: c.address,
-          websiteUrl: c.website_url,
-          phone: c.phone,
-          propertyType: c.property_type,
-          unitsCount: c.units_count,
-          yearBuilt: c.year_built,
-          amenities: c.amenities || [],
-          photos: c.photos || [],
-          lastScrapedAt: c.last_scraped_at,
-          brandVoice: c.brand_intel?.brand_voice || 'Not analyzed',
-          personality: c.brand_intel?.brand_personality || 'Not analyzed',
-          positioning: c.brand_intel?.positioning_statement || 'Not analyzed',
-          targetAudience: c.brand_intel?.target_audience || 'Not analyzed',
-          usps: c.brand_intel?.unique_selling_points || [],
-          highlightedAmenities: c.brand_intel?.highlighted_amenities || [],
-          activeSpecials: c.brand_intel?.active_specials || [],
-          lifestyleFocus: c.brand_intel?.lifestyle_focus || []
-        }))
+        const enrichedCompetitors = competitors.map(c => {
+          const intel = Array.isArray(c.brand_intel) ? c.brand_intel[0] : c.brand_intel
+          return {
+            id: c.id,
+            name: c.name,
+            address: c.address,
+            websiteUrl: c.website_url,
+            phone: c.phone,
+            propertyType: c.property_type,
+            unitsCount: c.units_count,
+            yearBuilt: c.year_built,
+            amenities: c.amenities || [],
+            photos: c.photos || [],
+            lastScrapedAt: c.last_scraped_at,
+            brandVoice: intel?.brand_voice || 'Not analyzed',
+            personality: intel?.brand_personality || 'Not analyzed',
+            positioning: intel?.positioning_statement || 'Not analyzed',
+            targetAudience: intel?.target_audience || 'Not analyzed',
+            usps: intel?.unique_selling_points || [],
+            highlightedAmenities: intel?.highlighted_amenities || [],
+            activeSpecials: intel?.active_specials || [],
+            lifestyleFocus: intel?.lifestyle_focus || []
+          }
+        })
         
         setAllCompetitors(enrichedCompetitors)
       }

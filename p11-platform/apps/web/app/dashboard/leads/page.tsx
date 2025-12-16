@@ -41,6 +41,7 @@ import { ActivityTimeline } from '@/components/leads/ActivityTimeline'
 
 type Lead = {
   id: string
+  property_id: string
   first_name: string
   last_name: string
   email: string
@@ -54,6 +55,15 @@ type Lead = {
   bedrooms?: string | null
   notes?: string | null
   last_contacted_at?: string | null
+}
+
+type TourLead = {
+  id: string
+  first_name: string
+  last_name: string
+  email?: string
+  phone?: string
+  property_id: string
 }
 
 type LeadsResponse = {
@@ -1810,19 +1820,35 @@ function LeadDetailDrawer({
       )}
 
       {/* Tour Schedule Modal */}
+      {/*
+        TourScheduleModal uses a narrower Lead shape where optional contact fields are
+        undefined (not null). Adapt here to keep types strict and avoid null mismatch.
+      */}
+      {(() => {
+        const tourLead: TourLead = {
+          id: lead.id,
+          first_name: lead.first_name,
+          last_name: lead.last_name,
+          email: lead.email || undefined,
+          phone: lead.phone || undefined,
+          property_id: lead.property_id
+        }
+        return (
       <TourScheduleModal
         isOpen={showScheduleTour}
         onClose={() => {
           setShowScheduleTour(false)
           setEditingTour(null)
         }}
-        lead={lead}
+        lead={tourLead}
         existingTour={editingTour}
         onScheduled={() => {
           fetchTours()
           // Also trigger a parent refresh to update lead status
         }}
       />
+        )
+      })()}
 
       {/* Edit Lead Modal */}
       {showEditLead && (

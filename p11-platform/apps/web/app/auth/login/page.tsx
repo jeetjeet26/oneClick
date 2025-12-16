@@ -9,6 +9,7 @@ import { Suspense } from 'react'
 function LoginForm() {
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect')
+  const oauthError = searchParams.get('error')
   const [state, formAction, isPending] = useActionState<AuthState | null, FormData>(signIn, null)
 
   return (
@@ -36,9 +37,9 @@ function LoginForm() {
 
       <div className="relative mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-800/50 backdrop-blur-xl py-8 px-4 shadow-2xl shadow-black/20 sm:rounded-2xl sm:px-10 border border-slate-700/50">
-          {state?.error && (
+          {(state?.error || oauthError) && (
             <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg text-sm">
-              {state.error}
+              {state?.error || oauthError}
             </div>
           )}
 
@@ -134,6 +135,7 @@ function LoginForm() {
 
             <div className="mt-6">
               <form action={signInWithGoogle}>
+                {redirect && <input type="hidden" name="redirect" value={redirect} />}
                 <button
                   type="submit"
                   className="inline-flex w-full justify-center items-center gap-3 rounded-lg border border-slate-600 bg-slate-900/50 py-3 px-4 text-sm font-medium text-slate-300 shadow-sm hover:bg-slate-700/50 hover:border-slate-500 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40"

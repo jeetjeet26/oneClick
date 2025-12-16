@@ -51,8 +51,9 @@ export async function GET(req: NextRequest) {
 
     // Transform data
     const transformedConversations = (conversations || []).map((conv) => {
-      const lead = conv.leads as { first_name: string; last_name: string; email: string } | null;
-      const messages = conv.messages as { id: string; content: string; created_at: string }[] | null;
+      const leadData = conv.leads ? (Array.isArray(conv.leads) ? conv.leads[0] : conv.leads) : null
+      const lead: { first_name: string; last_name: string; email: string } | null = leadData || null
+      const messages: { id: string; content: string; created_at: string }[] | null = Array.isArray(conv.messages) ? conv.messages : null
       const lastMessage = messages && messages.length > 0 
         ? messages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
         : null;

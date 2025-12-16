@@ -132,9 +132,10 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existingConnection) {
+      const props = Array.isArray(existingConnection.properties) ? existingConnection.properties[0] : existingConnection.properties
       return NextResponse.json(
         {
-          error: `This ${platform} account is already linked to "${(existingConnection.properties as { name: string } | null)?.name || 'another property'}"`,
+          error: `This ${platform} account is already linked to "${props?.name || 'another property'}"`,
         },
         { status: 409 }
       )
@@ -245,13 +246,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Log audit event
+    const props = Array.isArray(connectionToDelete.properties) ? connectionToDelete.properties[0] : connectionToDelete.properties
     await logAuditEvent({
       action: 'delete',
       entityType: 'ad_account_connection',
       entityId: connectionId,
       entityName: `${connectionToDelete.platform}:${connectionToDelete.account_id}`,
       details: {
-        property_name: (connectionToDelete.properties as { name: string } | null)?.name,
+        property_name: props?.name,
         platform: connectionToDelete.platform,
         account_name: connectionToDelete.account_name,
       },
@@ -324,6 +326,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }
+
 
 
 

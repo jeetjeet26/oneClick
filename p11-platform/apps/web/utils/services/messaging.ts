@@ -207,17 +207,18 @@ export async function sendEmail(
     
     console.log(`[Email] Resend API Response:`, JSON.stringify(result, null, 2))
     
-    // Check if the result indicates an error
-    if (result.error) {
-      console.error('[Email] Resend API returned error:', result.error)
+    // Resend SDK types vary by version; guard safely.
+    const maybeError = (result as any)?.error
+    if (maybeError) {
+      console.error('[Email] Resend API returned error:', maybeError)
       return {
         success: false,
-        error: typeof result.error === 'string' ? result.error : JSON.stringify(result.error),
+        error: typeof maybeError === 'string' ? maybeError : JSON.stringify(maybeError),
         channel: 'email',
       }
     }
     
-    const messageId = result.data?.id
+    const messageId = (result as any)?.data?.id ?? (result as any)?.id
     console.log(`[Email] ✅ Successfully sent to ${to}, Message ID: ${messageId}`)
     
     return {

@@ -17,6 +17,7 @@ export async function signIn(
 
   const email = formData.get('email') as string
   const password = formData.get('password') as string
+  const redirectTo = formData.get('redirect') as string | null
 
   if (!email || !password) {
     return { error: 'Email and password are required' }
@@ -32,7 +33,8 @@ export async function signIn(
   }
 
   revalidatePath('/', 'layout')
-  redirect('/dashboard')
+  const nextPath = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard'
+  redirect(nextPath)
 }
 
 export async function signUp(
@@ -80,18 +82,20 @@ export async function signOut() {
   redirect('/auth/login')
 }
 
-export async function signInWithGoogle() {
+export async function signInWithGoogle(formData: FormData): Promise<void> {
   const supabase = await createClient()
+  const redirectTo = formData.get('redirect') as string | null
+  const nextPath = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard'
   
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback?next=${encodeURIComponent(nextPath)}`,
     },
   })
 
   if (error) {
-    return { error: error.message }
+    redirect(`/auth/login?error=${encodeURIComponent(error.message)}`)
   }
 
   if (data.url) {

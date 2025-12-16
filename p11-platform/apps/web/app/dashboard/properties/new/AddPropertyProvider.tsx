@@ -149,6 +149,7 @@ export interface UploadedDocument {
   status: 'pending' | 'uploading' | 'completed' | 'error'
   chunks?: number
   error?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface WebsiteScrapeResult {

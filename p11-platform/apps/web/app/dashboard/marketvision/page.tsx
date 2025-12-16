@@ -30,6 +30,7 @@ import {
 
 interface Competitor {
   id: string
+  propertyId?: string
   name: string
   address: string | null
   websiteUrl: string | null
@@ -38,11 +39,35 @@ interface Competitor {
   yearBuilt: number | null
   propertyType: string
   amenities: string[]
-  photos: string[]
-  ilsListings: Record<string, string>
-  notes: string | null
+  photos?: string[]
+  ilsListings?: Record<string, string>
+  notes?: string | null
   isActive: boolean
   lastScrapedAt: string | null
+}
+
+type CompetitorUnitInput = {
+  unitType: string
+  bedrooms: number
+  bathrooms: number
+  sqftMin: string
+  sqftMax: string
+  rentMin: string
+  rentMax: string
+  availableCount: string
+}
+
+type CompetitorFormData = {
+  name: string
+  address: string
+  websiteUrl: string
+  phone: string
+  unitsCount: string
+  yearBuilt: string
+  propertyType: string
+  amenities: string[]
+  notes: string
+  units: CompetitorUnitInput[]
 }
 
 type TabId = 'overview' | 'competitors' | 'brand-intel' | 'alerts'
@@ -382,22 +407,22 @@ export default function MarketVisionPage() {
     handleFindApartmentsComListings(cityStateInput.city, cityStateInput.state)
   }
 
-  const handleAddCompetitor = async (data: Record<string, unknown>) => {
+  const handleAddCompetitor = async (data: CompetitorFormData) => {
     const res = await fetch('/api/marketvision/competitors', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         propertyId: currentProperty?.id,
         ...data,
-        units: (data.units as Array<Record<string, unknown>>)?.map(u => ({
+        units: (data.units || []).map(u => ({
           unitType: u.unitType,
           bedrooms: u.bedrooms,
           bathrooms: u.bathrooms || 1,
-          sqftMin: u.sqftMin ? parseInt(u.sqftMin as string) : null,
-          sqftMax: u.sqftMax ? parseInt(u.sqftMax as string) : null,
-          rentMin: u.rentMin ? parseFloat(u.rentMin as string) : null,
-          rentMax: u.rentMax ? parseFloat(u.rentMax as string) : null,
-          availableCount: u.availableCount ? parseInt(u.availableCount as string) : 0
+          sqftMin: u.sqftMin ? parseInt(u.sqftMin) : null,
+          sqftMax: u.sqftMax ? parseInt(u.sqftMax) : null,
+          rentMin: u.rentMin ? parseFloat(u.rentMin) : null,
+          rentMax: u.rentMax ? parseFloat(u.rentMax) : null,
+          availableCount: u.availableCount ? parseInt(u.availableCount) : 0
         }))
       })
     })
@@ -410,7 +435,7 @@ export default function MarketVisionPage() {
     handleRefresh()
   }
 
-  const handleEditCompetitor = async (data: Record<string, unknown>) => {
+  const handleEditCompetitor = async (data: CompetitorFormData) => {
     if (!editingCompetitor) return
 
     const res = await fetch('/api/marketvision/competitors', {
@@ -699,8 +724,8 @@ export default function MarketVisionPage() {
           key={`competitors-${refreshKey}`}
           propertyId={currentProperty?.id}
           onAddClick={() => setShowAddForm(true)}
-          onEditClick={setEditingCompetitor}
-          onViewClick={setViewingCompetitor}
+          onEditClick={(competitor) => setEditingCompetitor(competitor)}
+          onViewClick={(competitor) => setViewingCompetitor(competitor)}
           onRefresh={handleRefresh}
         />
       )}
@@ -753,14 +778,28 @@ export default function MarketVisionPage() {
 
       {/* Competitor Detail Drawer */}
       {viewingCompetitor && (
-        <CompetitorDetailDrawer
-          competitor={viewingCompetitor}
-          onClose={() => setViewingCompetitor(null)}
-          onEdit={(comp) => {
-            setViewingCompetitor(null)
-            setEditingCompetitor(comp)
-          }}
-        />
+        (() => {
+          const drawerCompetitor = {
+            ...viewingCompetitor,
+            photos: viewingCompetitor.photos ?? [],
+            notes: viewingCompetitor.notes ?? null
+          }
+          return (
+            <CompetitorDetailDrawer
+              competitor={drawerCompetitor}
+              onClose={() => setViewingCompetitor(null)}
+              onEdit={(comp) => {
+                setViewingCompetitor(null)
+                // Ensure required fields exist for our edit state
+                setEditingCompetitor({
+                  ...comp,
+                  photos: comp.photos ?? [],
+                  notes: comp.notes ?? null
+                })
+              }}
+            />
+          )
+        })()
       )}
 
       {/* City/State Input Modal */}
