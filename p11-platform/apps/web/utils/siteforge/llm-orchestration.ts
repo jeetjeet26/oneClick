@@ -3,15 +3,30 @@
 // Created: December 11, 2025
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import OpenAI from 'openai'
 import type {
   SiteContext,
   SiteArchitecture,
   GeneratedPage,
-  PageSection,
-  ACFBlockType
+  ACFBlockType,
+  SiteBlueprint
 } from '@/types/siteforge'
+import type { BlueprintPatchOperation } from '@/utils/siteforge/blueprint'
+import { applyBlueprintPatch, makeBlueprintFromPages } from '@/utils/siteforge/blueprint'
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!)
+function getGeminiClient(): GoogleGenerativeAI | null {
+  const key = process.env.GOOGLE_GEMINI_API_KEY
+  if (!key) return null
+  return new GoogleGenerativeAI(key)
+}
+
+function getOpenAIClient(): OpenAI {
+  const key = process.env.OPENAI_API_KEY
+  if (!key) throw new Error('OPENAI_API_KEY is not set (required for embeddings/KB + OpenAI fallback)')
+  return new OpenAI({ apiKey: key })
+}
+
+const OPENAI_SITEFORGE_MODEL = process.env.SITEFORGE_OPENAI_MODEL || 'gpt-4.1-2025-04-14'
 
 /**
  * Extract JSON from AI response that may be wrapped in markdown code blocks
@@ -56,11 +71,20 @@ const ACF_BLOCKS = [
   { name: 'acf/poi', purpose: 'Points of interest map', bestFor: ['neighborhood'] }
 ]
 
+function getAllowedAcfBlocksPrompt(): string {
+  return ACF_BLOCKS.map(b => `- ${b.name}: ${b.purpose} (best for: ${b.bestFor.join(', ')})`).join('\n')
+}
+
 /**
  * Plan complete site architecture using Gemini 3 Pro
  */
 export async function planSiteArchitecture(context: SiteContext): Promise<SiteArchitecture> {
-  const model = genAI.getGenerativeModel({
+  const gemini = getGeminiClient()
+  if (!gemini) {
+    return planSiteArchitectureOpenAI(context)
+  }
+
+  const model = gemini.getGenerativeModel({
     model: 'gemini-3-pro-preview',
     generationConfig: {
       temperature: 1.0, // Gemini 3 default - don't change
@@ -78,13 +102,19 @@ Target Audience: ${context.brand.data.targetAudience || 'young professionals'}
 Key Amenities: ${context.property.amenities.slice(0, 10).join(', ')}
 ${context.competitors.commonPatterns.length > 0 ? `Competitors emphasize: ${context.competitors.commonPatterns.join(', ')}` : ''}
 
+USER REQUEST (conversation prompt):
+${context.userPrompt || '(none)'}
+
+KB CONTEXT (facts to ground the build):
+${context.kbContext ? context.kbContext : '(none)'}
+
 USER PREFERENCES:
 ${context.preferences?.style ? `Style: ${context.preferences.style}` : ''}
 ${context.preferences?.emphasis ? `Emphasis: ${context.preferences.emphasis}` : ''}
 ${context.preferences?.ctaPriority ? `CTA Priority: ${context.preferences.ctaPriority}` : ''}
 
 AVAILABLE ACF BLOCKS:
-${ACF_BLOCKS.map(b => `- ${b.name}: ${b.purpose} (best for: ${b.bestFor.join(', ')})`).join('\n')}
+${getAllowedAcfBlocksPrompt()}
 
 TASK: Plan the complete site structure and page layouts.
 
@@ -131,25 +161,75 @@ OUTPUT FORMAT (JSON):
 IMPORTANT: Be direct and concise. Plan a site that converts prospects to tours.`
 
   // NOTE: Gemini "thinking" config support may lag in @google/generative-ai TypeScript types.
-  // We pass it through with a cast so builds don't break while keeping the runtime option.
-  const result = await model.generateContent({
+  // We pass it through with a cast to keep builds stable.
+  const requestWithThinking = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
-      // @ts-ignore - SDK typings may not include thinkingConfig yet
       thinkingConfig: { thinkingLevel: 'high' } // Deep reasoning for architecture
     }
-  } as any)
+  }
+  let resultText = ''
+  try {
+    const result = await model.generateContent(
+      requestWithThinking as unknown as Parameters<typeof model.generateContent>[0]
+    )
+    resultText = result.response.text()
+  } catch (e) {
+    // If Gemini key is invalid or request fails, fall back to OpenAI
+    return planSiteArchitectureOpenAI(context)
+  }
   
-  const responseText = result.response.text()
-  const cleanedJson = extractJsonFromResponse(responseText)
+  const cleanedJson = extractJsonFromResponse(resultText)
   
   try {
     return JSON.parse(cleanedJson)
   } catch (parseError) {
     console.error('Failed to parse architecture JSON:', parseError)
-    console.error('Raw response:', responseText.substring(0, 500))
-    throw new Error('AI returned invalid JSON for site architecture. Please try again.')
+    console.error('Raw response:', resultText.substring(0, 500))
+    // Fall back to OpenAI once if parsing fails
+    return planSiteArchitectureOpenAI(context)
   }
+}
+
+async function planSiteArchitectureOpenAI(context: SiteContext): Promise<SiteArchitecture> {
+  const openai = getOpenAIClient()
+
+  const prompt = `You are an expert WordPress site architect for multifamily real estate.
+
+Build a complete site architecture using ONLY this ACF block library:
+${getAllowedAcfBlocksPrompt()}
+
+PROPERTY CONTEXT:
+Property: ${context.property.name}
+Location: ${context.property.address.city}, ${context.property.address.state}
+Amenities: ${context.property.amenities.slice(0, 15).join(', ')}
+Brand voice: ${context.brand.data.brandVoice || 'professional'}
+Target audience: ${context.brand.data.targetAudience || 'young professionals'}
+
+USER REQUEST (conversation prompt):
+${context.userPrompt || '(none)'}
+
+KB CONTEXT (facts to ground the build):
+${context.kbContext ? context.kbContext : '(none)'}
+
+OUTPUT: Return JSON only with this structure:
+{
+  "navigation": { "structure": "primary", "items": [{ "label": "Home", "slug": "home", "priority": "high" }], "cta": { "text": "Schedule Tour", "style": "primary" } },
+  "pages": [
+    { "slug": "home", "title": "Home", "purpose": "...", "sections": [ { "type": "hero", "acfBlock": "acf/top-slides", "reasoning": "...", "order": 1 } ] }
+  ],
+  "designDecisions": { "colorStrategy": "...", "imageStrategy": "...", "contentDensity": "balanced", "conversionOptimization": ["..."] }
+}`
+
+  const completion = await openai.chat.completions.create({
+    model: OPENAI_SITEFORGE_MODEL,
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+    temperature: 0.7
+  })
+
+  const text = completion.choices[0]?.message?.content || '{}'
+  return JSON.parse(extractJsonFromResponse(text)) as SiteArchitecture
 }
 
 /**
@@ -163,7 +243,12 @@ export async function generateAllPageContent(
   architecture: SiteArchitecture,
   context: SiteContext
 ): Promise<GeneratedPage[]> {
-  const model = genAI.getGenerativeModel({
+  const gemini = getGeminiClient()
+  if (!gemini) {
+    return generateAllPageContentOpenAI(architecture, context)
+  }
+
+  const model = gemini.getGenerativeModel({
     model: 'gemini-3-pro-preview',
     generationConfig: {
       temperature: 1.0,
@@ -176,23 +261,37 @@ export async function generateAllPageContent(
   
   console.log('Generating all page content in single API call...')
   
-  const result = await model.generateContent({
+  const requestWithThinking = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
-      // @ts-ignore - SDK typings may not include thinkingConfig yet
       thinkingConfig: { thinkingLevel: 'medium' } // Balance quality and speed
     }
-  } as any)
+  }
+
+  let responseText = ''
+  try {
+    const result = await model.generateContent(
+      requestWithThinking as unknown as Parameters<typeof model.generateContent>[0]
+    )
+    responseText = result.response.text()
+  } catch (e) {
+    return generateAllPageContentOpenAI(architecture, context)
+  }
   
-  const responseText = result.response.text()
   const cleanedJson = extractJsonFromResponse(responseText)
   
   try {
-    const generatedContent = JSON.parse(cleanedJson)
+    type FullSiteContent = {
+      pages?: Array<{
+        slug: string
+        sections?: Array<{ content?: Record<string, unknown> }>
+      }>
+    }
+    const generatedContent = JSON.parse(cleanedJson) as FullSiteContent
     
     // Merge generated content back into architecture pages
     return architecture.pages.map(page => {
-      const pageContent = generatedContent.pages?.find((p: any) => p.slug === page.slug)
+      const pageContent = generatedContent.pages?.find(p => p.slug === page.slug)
       
       if (!pageContent) {
         console.warn(`No content generated for page: ${page.slug}`)
@@ -213,8 +312,204 @@ export async function generateAllPageContent(
   } catch (parseError) {
     console.error('Failed to parse full site content JSON:', parseError)
     console.error('Raw response (first 1000 chars):', responseText.substring(0, 1000))
-    throw new Error('AI returned invalid JSON for site content. Please try again.')
+    return generateAllPageContentOpenAI(architecture, context)
   }
+}
+
+async function generateAllPageContentOpenAI(
+  architecture: SiteArchitecture,
+  context: SiteContext
+): Promise<GeneratedPage[]> {
+  const openai = getOpenAIClient()
+  const prompt = buildFullSiteContentPrompt(architecture, context)
+  const completion = await openai.chat.completions.create({
+    model: OPENAI_SITEFORGE_MODEL,
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+    temperature: 0.7
+  })
+  const responseText = completion.choices[0]?.message?.content || '{}'
+  const cleanedJson = extractJsonFromResponse(responseText)
+
+  type FullSiteContent = {
+    pages?: Array<{
+      slug: string
+      sections?: Array<{ content?: Record<string, unknown> }>
+    }>
+  }
+  const generatedContent = JSON.parse(cleanedJson) as FullSiteContent
+
+  return architecture.pages.map(page => {
+    const pageContent = generatedContent.pages?.find(p => p.slug === page.slug)
+    if (!pageContent) return page
+    return {
+      ...page,
+      sections: page.sections.map((section, idx) => ({
+        ...section,
+        content: pageContent.sections?.[idx]?.content || {}
+      }))
+    }
+  })
+}
+
+/**
+ * Create a canonical editable Blueprint from generated pages.
+ * Today, Blueprint == pages + stable section IDs.
+ */
+export function createSiteBlueprintFromPages(pages: GeneratedPage[], version = 1): SiteBlueprint {
+  return makeBlueprintFromPages(pages, version)
+}
+
+/**
+ * Edit a site Blueprint based on a user's natural language instruction.
+ * The LLM must return PATCH OPERATIONS only (no prose), which we validate by shape
+ * and apply deterministically.
+ */
+export async function editSiteBlueprintWithLLM(args: {
+  blueprint: SiteBlueprint
+  context: SiteContext
+  instruction: string
+  selected?: { sectionId?: string; pageSlug?: string }
+}): Promise<{ blueprint: SiteBlueprint; operations: BlueprintPatchOperation[]; summary?: string }> {
+  const { blueprint, context, instruction, selected } = args
+
+  // Prefer Gemini if configured, otherwise fall back to OpenAI.
+  const gemini = getGeminiClient()
+
+  const selectedSection = selected?.sectionId
+    ? blueprint.pages.flatMap(p => p.sections || []).find(s => s.id === selected.sectionId)
+    : null
+
+  const prompt = `You are SiteForge, an expert WordPress website editor for multifamily real estate.
+
+You MUST edit the website by emitting JSON patch operations over an allowlisted ACF block library.
+Do not generate arbitrary code. Do not reference tools. Do not output markdown.
+
+PROPERTY CONTEXT:
+Property: ${context.property.name}
+Location: ${context.property.address.city}, ${context.property.address.state}
+Amenities: ${context.property.amenities.slice(0, 15).join(', ')}
+
+BRAND VOICE:
+${context.brand.data.brandVoice || 'professional and welcoming'}
+
+ALLOWED ACF BLOCKS:
+${getAllowedAcfBlocksPrompt()}
+
+CURRENT SITE (Blueprint):
+${JSON.stringify(blueprint, null, 2)}
+
+SELECTED SECTION (if any):
+${selectedSection ? JSON.stringify(selectedSection, null, 2) : 'null'}
+
+USER INSTRUCTION:
+${instruction}
+
+TASK:
+Return JSON with this exact structure:
+{
+  "summary": "Short description of the change",
+  "operations": [
+    {
+      "op": "update_section",
+      "sectionId": "existing-section-id",
+      "content": { /* full updated content object for that section */ },
+      "reasoning": "brief"
+    }
+  ]
+}
+
+Rules:
+1) Prefer updating the selected section if provided.
+2) You may add a new section ONLY if the instruction explicitly asks to add a new section/feature.
+   Use op = \"add_section\" with: { pageSlug, afterSectionId?, section:{ type, acfBlock, content, reasoning } }.
+3) Do NOT remove or move sections unless explicitly requested.
+4) Content must be realistic and based on the property context; do not invent facts.
+5) Keep the number of operations small (1-3).`
+
+  let cleanedJson = ''
+  if (gemini) {
+    try {
+      const model = gemini.getGenerativeModel({
+        model: 'gemini-3-pro-preview',
+        generationConfig: {
+          temperature: 0.7,
+          responseMimeType: 'application/json',
+        },
+      })
+      const requestWithThinking = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium' },
+        },
+      }
+      const result = await model.generateContent(
+        requestWithThinking as unknown as Parameters<typeof model.generateContent>[0]
+      )
+      cleanedJson = extractJsonFromResponse(result.response.text())
+    } catch {
+      // fall back to OpenAI below
+    }
+  }
+
+  if (!cleanedJson) {
+    const openai = getOpenAIClient()
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_SITEFORGE_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7
+    })
+    cleanedJson = extractJsonFromResponse(completion.choices[0]?.message?.content || '{}')
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(cleanedJson)
+  } catch (e) {
+    console.error('Failed to parse blueprint edit JSON:', e)
+    throw new Error('AI returned invalid JSON for blueprint edit. Please try again.')
+  }
+
+  const operations = extractOperations(parsed)
+  if (operations.length === 0) {
+    throw new Error('AI returned no operations. Please try again.')
+  }
+
+  // Minimal allowlist enforcement (block names only) for add_section ops
+  for (const op of operations) {
+    if (op.op === 'add_section') {
+      const isAllowed = ACF_BLOCKS.some(b => b.name === op.section.acfBlock)
+      if (!isAllowed) throw new Error(`AI attempted to add unsupported block: ${op.section.acfBlock}`)
+    }
+  }
+
+  const nextBlueprint = applyBlueprintPatch(blueprint, operations)
+  const summary = typeof getStringField(parsed, 'summary') === 'string' ? getStringField(parsed, 'summary') : undefined
+  return { blueprint: nextBlueprint, operations, summary }
+}
+
+function extractOperations(parsed: unknown): BlueprintPatchOperation[] {
+  if (!parsed || typeof parsed !== 'object') return []
+  if (!('operations' in parsed)) return []
+  const opsUnknown = (parsed as { operations?: unknown }).operations
+  if (!Array.isArray(opsUnknown)) return []
+
+  const ops: BlueprintPatchOperation[] = []
+  for (const item of opsUnknown) {
+    if (!item || typeof item !== 'object') continue
+    const opValue = (item as { op?: unknown }).op
+    if (typeof opValue !== 'string') continue
+    // Minimal shape enforcement; deeper validation happens when applying (and by allowlists).
+    ops.push(item as BlueprintPatchOperation)
+  }
+  return ops
+}
+
+function getStringField(obj: unknown, key: string): string | undefined {
+  if (!obj || typeof obj !== 'object') return undefined
+  const value = (obj as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : undefined
 }
 
 /**
@@ -264,6 +559,12 @@ ${context.property.photos.slice(0, 10).map((p, i) => `${i}. ${p.alt || p.categor
 ${architecture.designDecisions?.colorStrategy || 'Use primary brand colors for CTAs'}
 ${architecture.designDecisions?.imageStrategy || 'Lifestyle photography emphasizing community'}
 Conversion Goals: ${architecture.designDecisions?.conversionOptimization?.join(', ') || 'Tour bookings, contact form submissions'}
+
+=== USER REQUEST (CONVERSATION PROMPT) ===
+${context.userPrompt || '(none)'}
+
+=== KNOWLEDGE BASE CONTEXT (GROUND TRUTH) ===
+${context.kbContext || '(none)'}
 
 === SITE STRUCTURE ===
 ${JSON.stringify(pagesStructure, null, 2)}

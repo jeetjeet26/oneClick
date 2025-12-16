@@ -6,7 +6,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createServiceClient } from '@/utils/supabase/admin'
 import { getBrandIntelligence, getPropertyContext } from '@/utils/siteforge/brand-intelligence'
-import { planSiteArchitecture, generateAllPageContent } from '@/utils/siteforge/llm-orchestration'
+import { planSiteArchitecture, generateAllPageContent, createSiteBlueprintFromPages } from '@/utils/siteforge/llm-orchestration'
+import { retrieveKbContext } from '@/utils/siteforge/kb'
 import type { GenerateWebsiteRequest, SiteContext } from '@/types/siteforge'
 
 export async function POST(request: NextRequest) {
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: GenerateWebsiteRequest = await request.json()
-    const { propertyId, preferences } = body
+    const { propertyId, preferences, prompt } = body
 
     if (!propertyId) {
       return NextResponse.json({ error: 'propertyId required' }, { status: 400 })
@@ -67,6 +68,10 @@ export async function POST(request: NextRequest) {
         generation_status: 'queued',
         generation_progress: 0,
         user_preferences: preferences,
+        generation_input: {
+          prompt: prompt || null,
+          createdAt: new Date().toISOString()
+        },
         generation_started_at: new Date().toISOString()
       })
       .select()
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
         website_id: website.id,
         job_type: 'full_generation',
         status: 'queued',
-        input_params: { propertyId, preferences }
+        input_params: { propertyId, preferences, prompt }
       })
       .select()
       .single()
@@ -94,7 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Start generation in background (don't wait)
-    generateWebsiteAsync(website.id, propertyId, preferences).catch(error => {
+    generateWebsiteAsync(website.id, propertyId, preferences, prompt).catch(error => {
       console.error('Background generation error:', error)
     })
 
@@ -121,7 +126,8 @@ export async function POST(request: NextRequest) {
 async function generateWebsiteAsync(
   websiteId: string,
   propertyId: string,
-  preferences?: any
+  preferences?: any,
+  prompt?: string
 ) {
   // Use service client for background tasks (no request context available)
   const supabase = createServiceClient()
@@ -149,6 +155,22 @@ async function generateWebsiteAsync(
       .select('id, file_name, file_url, metadata')
       .eq('property_id', propertyId)
     
+    // Build KB context (conversation prompt + common property needs)
+    const kbQuery = [
+      prompt ? `User request: ${prompt}` : '',
+      `Property: ${propertyContext.name}`,
+      'amenities floor plans pricing availability pet policy parking location contact hours application tour scheduling',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const kb = await retrieveKbContext({
+      propertyId,
+      query: kbQuery,
+      matchCount: 8,
+      matchThreshold: 0.45
+    })
+
     const context: SiteContext = {
       brand,
       property: propertyContext,
@@ -167,7 +189,9 @@ async function generateWebsiteAsync(
         fileUrl: d.file_url,
         type: d.metadata?.type || 'document'
       })),
-      preferences
+      preferences,
+      userPrompt: prompt,
+      kbContext: kb.contextText
     }
     
     // Update website with brand source
@@ -198,14 +222,31 @@ async function generateWebsiteAsync(
     
     // 6. Generate content for all pages
     const pages = await generateAllPageContent(architecture, context)
+    const blueprint = createSiteBlueprintFromPages(pages, 1)
     
     // Save generated pages
     await supabase
       .from('property_websites')
       .update({
-        pages_generated: pages
+        pages_generated: blueprint.pages,
+        site_blueprint: blueprint,
+        site_blueprint_version: 1,
+        site_blueprint_updated_at: blueprint.updatedAt
       })
       .eq('id', websiteId)
+
+    // Save version 1 in blueprint versions table (best-effort)
+    try {
+      await supabase
+        .from('siteforge_blueprint_versions')
+        .insert({
+          website_id: websiteId,
+          version: 1,
+          blueprint
+        })
+    } catch (e) {
+      console.warn('Failed to insert blueprint version record (non-fatal):', e)
+    }
     
     // Update status: Preparing assets
     await updateStatus(websiteId, 'preparing_assets', 70, 'Preparing images and assets...')

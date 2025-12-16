@@ -112,20 +112,17 @@ export class WordPressAPIClient {
     
     const content = renderGutenbergBlocks(blocks)
     
-    // TODO: Implement actual WordPress REST API call
-    console.log('TODO: Create WordPress page:', page.title)
-    
     const response = await this.post('/pages', {
       title: page.title,
       slug: page.slug,
       status: 'publish',
       content,
-      meta: {
-        _acf: mapACFFields(page.sections, mediaIds)
-      }
+      // ACF blocks carry their data inside block attrs; meta mapping is optional
     })
     
-    return response.id
+    const id = typeof response.id === 'number' ? response.id : undefined
+    if (!id) throw new Error('WordPress API did not return a page id')
+    return id
   }
   
   /**
@@ -138,40 +135,69 @@ export class WordPressAPIClient {
     primaryColor?: string
     secondaryColor?: string
   }): Promise<void> {
-    // TODO: Implement site settings update
-    console.log('TODO: Update WordPress settings')
+    // Site settings are not part of wp/v2 base endpoint; this is environment-specific
+    // Keep as a no-op for now (safe default).
+    console.log('Skipping WordPress settings update (not implemented)')
   }
   
   /**
    * Create navigation menu
    */
   async createNavigation(architecture: SiteArchitecture): Promise<void> {
-    // TODO: Implement navigation menu creation
-    console.log('TODO: Create navigation menu')
+    console.log('Skipping navigation creation (not implemented)')
   }
   
   /**
    * Configure Yoast SEO
    */
-  async configureYoastSEO(property: any): Promise<void> {
-    // TODO: Implement Yoast SEO configuration
-    console.log('TODO: Configure Yoast SEO')
+  async configureYoastSEO(_property: unknown): Promise<void> {
+    console.log('Skipping Yoast SEO configuration (not implemented)')
   }
   
-  private async post(endpoint: string, data: any): Promise<any> {
-    // TODO: Implement authenticated POST request
-    return { id: Math.floor(Math.random() * 1000) }
+  private async post(endpoint: string, data: unknown): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}${endpoint}`
+    const auth = Buffer.from(`${this.credentials.username}:${this.credentials.password}`).toString('base64')
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${auth}`
+      },
+      body: JSON.stringify(data)
+    })
+
+    const text = await res.text()
+    let json: unknown = null
+    try {
+      json = text ? JSON.parse(text) : null
+    } catch {
+      // ignore
+    }
+
+    if (!res.ok) {
+      const message =
+        json && typeof json === 'object' && 'message' in json ? String((json as Record<string, unknown>).message) : text || 'Unknown error'
+      throw new Error(`WordPress API POST ${endpoint} failed (${res.status}): ${message}`)
+    }
+
+    return (json && typeof json === 'object' ? (json as Record<string, unknown>) : {}) as Record<string, unknown>
   }
 }
 
 /**
  * Convert section to Gutenberg block format
  */
+type GutenbergBlock = {
+  blockName: string
+  attrs?: Record<string, unknown>
+}
+
 function convertToGutenbergBlock(
-  section: any,
-  mediaIds: Map<string, number>
-): any {
-  // TODO: Implement Gutenberg block conversion for each ACF block type
+  section: { acfBlock: string; content: Record<string, unknown> },
+  _mediaIds: Map<string, number>
+): GutenbergBlock {
+  // For ACF blocks, the Collection theme reads $block['attrs']['data'].
+  // We store our section.content as attrs.data directly.
   return {
     blockName: section.acfBlock,
     attrs: {
@@ -183,17 +209,13 @@ function convertToGutenbergBlock(
 /**
  * Render Gutenberg blocks as HTML
  */
-function renderGutenbergBlocks(blocks: any[]): string {
-  // TODO: Implement Gutenberg block rendering
-  return blocks.map(b => `<!-- wp:${b.blockName} -->\n<!-- /wp:${b.blockName} -->`).join('\n\n')
-}
-
-/**
- * Map sections to ACF field structure
- */
-function mapACFFields(sections: any[], mediaIds: Map<string, number>): any {
-  // TODO: Implement ACF field mapping
-  return {}
+function renderGutenbergBlocks(blocks: GutenbergBlock[]): string {
+  return blocks
+    .map(b => {
+      const attrs = b.attrs && Object.keys(b.attrs).length > 0 ? ` ${JSON.stringify(b.attrs)}` : ''
+      return `<!-- wp:${b.blockName}${attrs} /-->`
+    })
+    .join('\n\n')
 }
 
 /**
@@ -220,7 +242,7 @@ function generateSecurePassword(): string {
  */
 export async function deployToWordPress(
   architecture: SiteArchitecture,
-  propertyContext: any,
+  propertyContext: { name: string; tagline?: string },
   assets: WebsiteAsset[],
   cloudwaysCredentials: CloudwaysCredentials
 ): Promise<WordPressInstance> {
@@ -256,6 +278,35 @@ export async function deployToWordPress(
   await wpClient.configureYoastSEO(propertyContext)
   
   return instance
+}
+
+/**
+ * Deploy to an existing WordPress instance (no Cloudways provisioning).
+ * Assumes the instance already has required theme/plugins installed.
+ */
+export async function deployToExistingWordPress(args: {
+  wpUrl: string
+  credentials: { username: string; password: string }
+  pages: GeneratedPage[]
+  propertyContext: { name: string; tagline?: string }
+  assets: WebsiteAsset[]
+}): Promise<WordPressInstance> {
+  const { wpUrl, credentials, pages, propertyContext } = args
+  const wpClient = new WordPressAPIClient(wpUrl, credentials)
+
+  // Media upload is TODO; pages will reference placeholders by index.
+  const mediaIds = new Map<string, number>()
+
+  for (const page of pages) {
+    await wpClient.createPage(page, mediaIds)
+  }
+
+  return {
+    instanceId: 'existing',
+    url: wpUrl,
+    adminUrl: `${wpUrl.replace(/\/$/, '')}/wp-admin`,
+    credentials
+  }
 }
 
 

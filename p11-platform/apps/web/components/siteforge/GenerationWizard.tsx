@@ -27,7 +27,9 @@ export function GenerationWizard({
   onComplete
 }: GenerationWizardProps) {
   const [step, setStep] = useState<'preferences' | 'generating' | 'complete' | 'error'>('preferences')
+  const [mode, setMode] = useState<'template' | 'conversation'>('conversation')
   const [preferences, setPreferences] = useState<GenerationPreferences>({})
+  const [prompt, setPrompt] = useState<string>('')
   const [websiteId, setWebsiteId] = useState<string | null>(null)
   const [status, setStatus] = useState<GenerationStatus>('queued')
   const [progress, setProgress] = useState(0)
@@ -73,7 +75,8 @@ export function GenerationWizard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           propertyId,
-          preferences
+          preferences,
+          prompt: mode === 'conversation' ? prompt.trim() : undefined
         })
       })
 
@@ -117,6 +120,39 @@ export function GenerationWizard({
         {/* Preferences Step */}
         {step === 'preferences' && (
           <div className="space-y-6 py-4">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={mode === 'conversation' ? 'default' : 'outline'}
+                onClick={() => setMode('conversation')}
+              >
+                Start with Conversation
+              </Button>
+              <Button
+                type="button"
+                variant={mode === 'template' ? 'default' : 'outline'}
+                onClick={() => setMode('template')}
+              >
+                Quick Template
+              </Button>
+            </div>
+
+            {mode === 'conversation' && (
+              <div className="space-y-2">
+                <Label htmlFor="prompt">Describe the website you want</Label>
+                <textarea
+                  id="prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={`Example: Build a luxury, modern site for ${propertyName}. Highlight resort-style pool, fitness, pet-friendly policies, and walkable neighborhood. Primary CTA: Schedule a Tour.`}
+                  className="w-full min-h-[110px] rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  We’ll use your property knowledge base to ground facts (no guessing).
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="style">Style Preference (Optional)</Label>
               <Select
@@ -165,7 +201,10 @@ export function GenerationWizard({
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button onClick={handleGenerate}>
+              <Button
+                onClick={handleGenerate}
+                disabled={mode === 'conversation' && prompt.trim().length < 10}
+              >
                 Generate Website →
               </Button>
             </div>

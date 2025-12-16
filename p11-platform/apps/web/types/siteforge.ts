@@ -7,8 +7,10 @@ export type GenerationStatus =
   | 'planning_architecture'
   | 'generating_content'
   | 'preparing_assets'
+  | 'ready_for_preview'
   | 'deploying'
   | 'complete'
+  | 'deploy_failed'
   | 'failed'
 
 export type BrandSource = 'brandforge' | 'knowledge_base' | 'generated' | 'hybrid'
@@ -101,8 +103,8 @@ export interface PropertyContext {
     category?: string
   }>
   policies?: {
-    pets?: any
-    parking?: any
+    pets?: unknown
+    parking?: unknown
   }
   specialFeatures?: string[]
   unitCount?: number
@@ -140,6 +142,8 @@ export interface SiteContext {
     type: string
   }>
   preferences?: GenerationPreferences
+  userPrompt?: string
+  kbContext?: string
 }
 
 // ACF Block types from Collection theme
@@ -161,11 +165,14 @@ export type ACFBlockType =
 
 // Section in a page
 export interface PageSection {
+  id?: string // stable identifier for click-to-edit in dashboard
   type: string // semantic type like 'hero', 'value_proposition', etc.
   acfBlock: ACFBlockType
-  content: any // ACF field data structure
+  content: Record<string, unknown> // ACF field data structure
   reasoning: string // Why this section here (for debugging/refinement)
   order: number
+  label?: string // user-facing label (optional)
+  variant?: string // library variant key (optional)
 }
 
 // Generated page structure
@@ -247,6 +254,9 @@ export interface PropertyWebsite {
   
   siteArchitecture?: SiteArchitecture
   pagesGenerated?: GeneratedPage[]
+  siteBlueprint?: SiteBlueprint
+  siteBlueprintVersion?: number
+  siteBlueprintUpdatedAt?: string
   assetsManifest?: {
     totalAssets: number
     assetsByType: Record<AssetType, number>
@@ -271,15 +281,39 @@ export interface PropertyWebsite {
   updatedAt: string
 }
 
+// Canonical representation for preview/edit/deploy
+export interface SiteBlueprint {
+  version: number
+  pages: GeneratedPage[]
+  updatedAt?: string
+}
+
+// LLM-driven editing API
+export interface EditBlueprintRequest {
+  websiteId: string
+  instruction: string
+  selected?: {
+    pageSlug?: string
+    sectionId?: string
+  }
+}
+
+export interface EditBlueprintResponse {
+  websiteId: string
+  blueprint: SiteBlueprint
+  appliedOperations: unknown[]
+  summary?: string
+}
+
 // Generation job
 export interface SiteForgeJob {
   id: string
   websiteId: string
   jobType: 'full_generation' | 'regenerate_page' | 'update_content' | 'deploy_changes'
   status: 'queued' | 'processing' | 'complete' | 'failed'
-  inputParams?: any
-  outputData?: any
-  errorDetails?: any
+  inputParams?: unknown
+  outputData?: unknown
+  errorDetails?: unknown
   attempts: number
   maxAttempts: number
   startedAt?: string
@@ -291,6 +325,7 @@ export interface SiteForgeJob {
 export interface GenerateWebsiteRequest {
   propertyId: string
   preferences?: GenerationPreferences
+  prompt?: string // conversation-start: user describes desired site; KB-driven
 }
 
 export interface GenerateWebsiteResponse {

@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createServiceClient } from '@/utils/supabase/admin'
+import { deployToExistingWordPress, deployToWordPress } from '@/utils/siteforge/wordpress-client'
+import { getPropertyContext } from '@/utils/siteforge/brand-intelligence'
 
 export async function POST(
   request: NextRequest,
@@ -69,15 +71,27 @@ export async function POST(
       }, { status: 400 })
     }
 
-    // TODO: Check for Cloudways API credentials
+    // Deployment options:
+    // A) Cloudways provision + deploy (requires CLOUDWAYS_API_KEY + CLOUDWAYS_EMAIL)
+    // B) Deploy to an existing WordPress instance (requires SITEFORGE_WP_URL + SITEFORGE_WP_USERNAME + SITEFORGE_WP_APP_PASSWORD)
     const cloudwaysApiKey = process.env.CLOUDWAYS_API_KEY
     const cloudwaysEmail = process.env.CLOUDWAYS_EMAIL
-    
-    if (!cloudwaysApiKey || !cloudwaysEmail) {
-      return NextResponse.json({ 
-        error: 'WordPress deployment requires Cloudways API credentials. Please add CLOUDWAYS_API_KEY and CLOUDWAYS_EMAIL to your environment variables.',
-        requiresConfig: true
-      }, { status: 400 })
+    const wpUrl = process.env.SITEFORGE_WP_URL
+    const wpUsername = process.env.SITEFORGE_WP_USERNAME
+    const wpAppPassword = process.env.SITEFORGE_WP_APP_PASSWORD
+
+    const hasCloudways = Boolean(cloudwaysApiKey && cloudwaysEmail)
+    const hasExistingWp = Boolean(wpUrl && wpUsername && wpAppPassword)
+
+    if (!hasCloudways && !hasExistingWp) {
+      return NextResponse.json(
+        {
+          error:
+            'WordPress deployment requires either Cloudways credentials (CLOUDWAYS_API_KEY + CLOUDWAYS_EMAIL) or an existing WP target (SITEFORGE_WP_URL + SITEFORGE_WP_USERNAME + SITEFORGE_WP_APP_PASSWORD).',
+          requiresConfig: true
+        },
+        { status: 400 }
+      )
     }
 
     // Update status to deploying
@@ -117,27 +131,55 @@ async function deployToWordPressAsync(websiteId: string, website: any) {
   const supabase = createServiceClient()
   
   try {
-    // TODO: Implement actual WordPress deployment via Cloudways API
-    // Steps:
-    // 1. Create WordPress site on Cloudways (or use existing)
-    // 2. Install Collection theme
-    // 3. Create pages with ACF blocks
-    // 4. Upload media assets
-    // 5. Set up navigation
-    // 6. Configure SEO settings
-    
-    // For now, simulate deployment
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    
-    // Mark as complete (mock deployment)
+    const cloudwaysApiKey = process.env.CLOUDWAYS_API_KEY
+    const cloudwaysEmail = process.env.CLOUDWAYS_EMAIL
+    const wpUrl = process.env.SITEFORGE_WP_URL
+    const wpUsername = process.env.SITEFORGE_WP_USERNAME
+    const wpAppPassword = process.env.SITEFORGE_WP_APP_PASSWORD
+
+    // Load assets for this website
+    const { data: assets } = await supabase
+      .from('website_assets')
+      .select('*')
+      .eq('website_id', websiteId)
+
+    // Get property context (for naming/settings)
+    const propertyContext = await getPropertyContext(website.property_id)
+
+    // Determine pages to deploy (prefer blueprint)
+    const pages = website.site_blueprint?.pages || website.pages_generated || []
+
+    let instance: any
+    if (cloudwaysApiKey && cloudwaysEmail) {
+      // Provision + deploy (Cloudways integration is still partially TODO in wordpress-client)
+      instance = await deployToWordPress(
+        { pages, navigation: website.site_architecture?.navigation, designDecisions: website.site_architecture?.designDecisions } as any,
+        propertyContext,
+        assets || [],
+        { apiKey: cloudwaysApiKey, email: cloudwaysEmail }
+      )
+    } else if (wpUrl && wpUsername && wpAppPassword) {
+      instance = await deployToExistingWordPress({
+        wpUrl,
+        credentials: { username: wpUsername, password: wpAppPassword },
+        pages,
+        propertyContext,
+        assets: assets || []
+      })
+    } else {
+      throw new Error('No deployment credentials configured')
+    }
+
+    // Mark as complete
     await supabase
       .from('property_websites')
       .update({
         generation_status: 'complete',
         current_step: 'Deployment complete!',
-        // These would be set by actual Cloudways deployment
-        // wp_url: 'https://property-site.example.com',
-        // wp_admin_url: 'https://property-site.example.com/wp-admin',
+        wp_url: instance.url,
+        wp_admin_url: instance.adminUrl,
+        wp_instance_id: instance.instanceId,
+        wp_credentials: instance.credentials,
         deployed_at: new Date().toISOString()
       })
       .eq('id', websiteId)

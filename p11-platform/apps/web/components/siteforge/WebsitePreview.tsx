@@ -4,45 +4,65 @@
 // Shows generated site structure and content
 // Created: December 11, 2025
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ACFBlockRenderer } from './ACFBlockRenderer'
-import type { PropertyWebsite, GeneratedPage } from '@/types/siteforge'
+import type { GeneratedPage } from '@/types/siteforge'
+
+type WebsitePreviewData = {
+  websiteId: string
+  property?: ({ name?: string } & Record<string, unknown>) | null
+  generationStatus?: string
+  brandSource?: string
+  brandConfidence?: number
+  siteArchitecture?: { designDecisions?: any } | null
+  pagesGenerated?: GeneratedPage[]
+  assets?: unknown[]
+  wpUrl?: string
+  wpAdminUrl?: string
+  createdAt?: string
+  completedAt?: string
+}
 
 interface WebsitePreviewProps {
   websiteId: string
 }
 
 export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
-  const [website, setWebsite] = useState<any | null>(null)
+  const [website, setWebsite] = useState<WebsitePreviewData | null>(null)
   const [selectedPage, setSelectedPage] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
+  const [editInstruction, setEditInstruction] = useState<string>('')
+  const [editing, setEditing] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editSummary, setEditSummary] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadWebsite()
-  }, [websiteId])
-
-  const loadWebsite = async () => {
+  const loadWebsite = useCallback(async () => {
     try {
       const response = await fetch(`/api/siteforge/preview/${websiteId}`)
-      const data = await response.json()
+      const data = (await response.json()) as WebsitePreviewData
       setWebsite(data)
       // Set initial page to first page
-      if (data.pagesGenerated?.length > 0 && !selectedPage) {
-        setSelectedPage(data.pagesGenerated[0].slug)
+      if ((data.pagesGenerated?.length || 0) > 0 && !selectedPage) {
+        setSelectedPage(data.pagesGenerated?.[0]?.slug || '')
       }
       setLoading(false)
     } catch (error) {
       console.error('Error loading website:', error)
       setLoading(false)
     }
-  }
+  }, [websiteId, selectedPage])
+
+  useEffect(() => {
+    loadWebsite()
+  }, [loadWebsite])
 
   const handleDelete = async () => {
     if (!confirm('Delete this website? This cannot be undone.')) return
@@ -70,7 +90,52 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
   }
 
   const handleEdit = () => {
-    alert('Edit functionality coming soon! This will allow you to manually edit content before publishing.')
+    // Soft focus the edit flow: user selects a section then asks for changes.
+    alert('Tip: Click a section below, then describe what you want changed.')
+  }
+
+  const handleApplyEdit = async (pageSlug: string) => {
+    if (!selectedSectionId) {
+      setEditError('Select a section to edit first.')
+      return
+    }
+    const instruction = editInstruction.trim()
+    if (!instruction) {
+      setEditError('Type what you want changed.')
+      return
+    }
+
+    setEditing(true)
+    setEditError(null)
+    setEditSummary(null)
+
+    try {
+      const response = await fetch(`/api/siteforge/edit/${websiteId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          websiteId,
+          instruction,
+          selected: { pageSlug, sectionId: selectedSectionId }
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        setEditError(data.error || 'Failed to apply edit')
+        setEditing(false)
+        return
+      }
+
+      setEditSummary(data.summary || 'Updated successfully')
+      setEditInstruction('')
+      await loadWebsite()
+    } catch (e) {
+      console.error('Edit error:', e)
+      setEditError('Failed to apply edit')
+    } finally {
+      setEditing(false)
+    }
   }
 
   const handleDeploy = async () => {
@@ -145,7 +210,6 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
   }
 
   const pages: GeneratedPage[] = website.pagesGenerated || []
-  const currentPage = pages.find(p => p.slug === selectedPage) || pages[0]
 
   return (
     <div className="space-y-6">
@@ -158,7 +222,7 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                 {website.property?.name || 'Property Website'}
               </h2>
               <p className="text-base text-gray-600 dark:text-gray-400">
-                Generated {new Date(website.createdAt).toLocaleDateString()}
+                Generated {website.createdAt ? new Date(website.createdAt).toLocaleDateString() : ''}
               </p>
             </div>
 
@@ -274,7 +338,19 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                 {page.sections && page.sections.length > 0 && (
                   <div className="space-y-6">
                     {page.sections.map((section, idx) => (
-                      <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                      <div
+                        key={section.id || idx}
+                        className={`border rounded-lg overflow-hidden cursor-pointer transition ${
+                          selectedSectionId === section.id
+                            ? 'border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-900/30'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                        onClick={() => {
+                          if (section.id) setSelectedSectionId(section.id)
+                          setEditError(null)
+                          setEditSummary(null)
+                        }}
+                      >
                         {/* Section Header */}
                         <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 flex items-center justify-between border-b border-gray-200 dark:border-gray-700">
                           <div className="flex items-center gap-3">
@@ -288,7 +364,60 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                               ({section.acfBlock})
                             </span>
                           </div>
+                          <div className="text-xs text-gray-500">
+                            {selectedSectionId === section.id ? 'Selected' : 'Click to edit'}
+                          </div>
                         </div>
+
+                        {/* Inline Edit UI */}
+                        {selectedSectionId === section.id && (
+                          <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-4 space-y-3">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              Ask AI to change this section
+                            </div>
+                            <textarea
+                              value={editInstruction}
+                              onChange={(e) => setEditInstruction(e.target.value)}
+                              placeholder="Example: Make this feel more luxury, shorten the headline, and emphasize the pool + fitness center."
+                              className="w-full min-h-[90px] rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+                              disabled={editing}
+                            />
+                            <div className="flex items-center gap-3">
+                              <Button
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleApplyEdit(page.slug)
+                                }}
+                                disabled={editing}
+                              >
+                                {editing ? 'Applying…' : 'Apply AI Edit'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setSelectedSectionId(null)
+                                  setEditInstruction('')
+                                  setEditError(null)
+                                  setEditSummary(null)
+                                }}
+                                disabled={editing}
+                              >
+                                Cancel
+                              </Button>
+                              {editSummary && (
+                                <span className="text-xs text-green-700 dark:text-green-300">{editSummary}</span>
+                              )}
+                              {editError && (
+                                <span className="text-xs text-red-700 dark:text-red-300">{editError}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         
                         {/* Visual Preview */}
                         <div className="bg-white dark:bg-gray-900">
