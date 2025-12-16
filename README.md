@@ -532,12 +532,12 @@ POST /api/chat
 Body: { messages: Message[], propertyId: string, conversationId?: string }
 Response: { role: "assistant", content: string, conversationId: string }
 
-POST /api/lumaleasing/chat   // External widget endpoint (used by WordPress plugin)
+POST /api/lumaleasing/chat   // External widget endpoint (embedded integrations)
 Body: { messages: Message[], sessionId?: string, leadInfo?: object }
 Headers: { X-API-Key: string, X-Visitor-ID: string }
 Response: { content: string, sessionId: string, conversationId: string }
 
-GET /api/lumaleasing/config   // Widget configuration (used by WordPress plugin)
+GET /api/lumaleasing/config   // Widget configuration (embedded integrations)
 Headers: { X-API-Key: string }
 Response: { config: object, isOnline: boolean }
 ```
@@ -840,7 +840,6 @@ python run_pipelines.py
 - [x] TourSpark automation sequences ✅
 - [x] **BrandForge™** - AI brand book generator ✅ (Early delivery!)
 - [x] **SiteForge™** - WordPress site generation from brand assets ✅ (Early delivery!)
-- [x] **LumaLeasing WordPress Plugin** - One-click installation for WP sites ✅ (Early delivery!)
 - [ ] Advanced pipeline configuration UI
 - [ ] LLM-powered CRM configurator
 - [ ] SocialPilot auto-posting
@@ -857,31 +856,25 @@ python run_pipelines.py
 ## 📚 Documentation
 
 ### Core Documentation
-- [Master Implementation Plan 2026](./Master_Implementation_Plan_2026.md)
-- [Product Tech Specs](./Product_Tech_Specs.md)
-- [Progress Report](./Progress_Analysis_Report.md)
-- [Roadmap & RICE Analysis](./P11_Product_Roadmap_RICE_Analysis.md)
-- [Executive Summary](./P11_Executive_Summary.md)
-- [Implementation Checklist](./P11_Implementation_Checklist.md)
+- **Docs index**: see [`docs/`](./docs/)
+- **Production readiness audit**: [`docs/PRODUCTION_READINESS_AUDIT_2025-12-15.md`](./docs/PRODUCTION_READINESS_AUDIT_2025-12-15.md)
+- **SiteForge master report**: [`docs/SITEFORGE_MASTER_REPORT.md`](./docs/SITEFORGE_MASTER_REPORT.md)
 
 ### Product Guides
-- **[SiteForge Quick Start](./p11-platform/SITEFORGE_QUICKSTART.md)** 🆕
-- **[SiteForge MVP Status](./p11-platform/SITEFORGE_MVP_STATUS.md)** 🆕
-- **[SiteForge Complete Summary](./p11-platform/SITEFORGE_COMPLETE.md)** 🆕
-- [BrandForge Quick Start](./p11-platform/BRANDFORGE_QUICKSTART.md)
-- [BrandForge Complete Summary](./p11-platform/BRANDFORGE_COMPLETE_SUMMARY.md)
-- [BrandForge Implementation](./p11-platform/apps/web/BRANDFORGE_IMPLEMENTATION.md)
-- [CRM Implementation Guide](./p11-platform/CRM_MVP_IMPLEMENTATION_COMPLETE.md)
-- [CRM Quick Start](./p11-platform/CRM_QUICK_START.md)
-- [CRM Vision & Context](./p11-platform/P11_CRM_VISION_CONTEXT.md)
-- [Email Diagnostic Guide](./p11-platform/EMAIL_DIAGNOSTIC_GUIDE.md)
+- **[SiteForge Quick Start](./docs/SITEFORGE_QUICKSTART.md)** 🆕
+- **[SiteForge MVP Status](./docs/SITEFORGE_MVP_STATUS.md)** 🆕
+- **[SiteForge Complete](./docs/SITEFORGE_COMPLETE.md)** 🆕
+- [BrandForge Quick Start](./docs/BRANDFORGE_QUICKSTART.md)
+- [BrandForge Complete Summary](./docs/BRANDFORGE_COMPLETE_SUMMARY.md)
+- [BrandForge Implementation](./docs/BRANDFORGE_IMPLEMENTATION.md)
+- [CRM Implementation Plan](./docs/P11_CRM_IMPLEMENTATION_PLAN.md)
+- [CRM Quick Start](./docs/CRM_QUICK_START.md)
+- [CRM Vision & Context](./docs/P11_CRM_VISION_CONTEXT.md)
+- [Email Diagnostic Guide](./docs/EMAIL_DIAGNOSTIC_GUIDE.md)
 
 ### Technical Documentation
 - [MCP Servers README](./p11-platform/services/mcp-servers/README.md)
 - [Data Engine README](./p11-platform/services/data-engine/README.md)
-
-### Archived Documentation
-- [Outdated Documentation](./outdated/) - Historical implementation notes
 
 ---
 

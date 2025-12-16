@@ -75,6 +75,13 @@ lumaleasing-wordpress-*.zip
 LUMALEASING_WORDPRESS_COMPLETE.md
 client_secret_*.json
 
+# Local WordPress site/theme exports (do not commit)
+Collection/
+*-Website-main/
+*-Website-main.zip
+CAL06-001-Cadence-Creek-at-Mission-Ranch-Website-main/
+CAL06-001-Cadence-Creek-at-Mission-Ranch-Website-main.zip
+
 
 
 
