@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "buildCommand": "cd p11-platform/apps/web && npm install && npm run build",
+  "devCommand": "cd p11-platform/apps/web && npm run dev",
+  "installCommand": "cd p11-platform/apps/web && npm install",
+  "outputDirectory": "p11-platform/apps/web/.next",
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/workflows/process",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/reviewflow/sync-all",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/pipelines/daily",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}
