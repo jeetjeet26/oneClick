@@ -3,10 +3,23 @@ import { createServiceClient } from '@/utils/supabase/admin';
 import { generateTourCalendarResponse, CalendarLinks } from '@/utils/services/calendar-invite';
 import { sendEmail, EmailAttachment } from '@/utils/services/messaging';
 
+function extractApiKey(req: NextRequest): string | null {
+  const headerKey = req.headers.get('X-API-Key') || req.headers.get('x-api-key');
+  const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+  const authKey = authHeader?.replace(/^Bearer\s+/i, '');
+  const urlKey = new URL(req.url).searchParams.get('apiKey') || new URL(req.url).searchParams.get('api_key');
+
+  const raw = headerKey || authKey || urlKey;
+  if (!raw) return null;
+
+  const normalized = raw.trim();
+  return normalized.length ? normalized : null;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, X-Visitor-ID',
+  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, X-Visitor-ID, Authorization',
 };
 
 export async function OPTIONS() {
@@ -16,7 +29,7 @@ export async function OPTIONS() {
 // GET - Fetch available tour slots
 export async function GET(req: NextRequest) {
   try {
-    const apiKey = req.headers.get('X-API-Key');
+    const apiKey = extractApiKey(req);
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
@@ -105,7 +118,7 @@ export async function GET(req: NextRequest) {
 // POST - Book a tour
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = req.headers.get('X-API-Key');
+    const apiKey = extractApiKey(req);
 
     if (!apiKey) {
       return NextResponse.json(
@@ -137,7 +150,7 @@ export async function POST(req: NextRequest) {
       .select(`
         property_id, 
         tours_enabled,
-        properties!inner(
+        properties(
           id,
           name,
           address,

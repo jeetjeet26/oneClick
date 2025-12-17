@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/admin';
 
+function extractApiKey(req: NextRequest): string | null {
+  const headerKey = req.headers.get('X-API-Key') || req.headers.get('x-api-key');
+  const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+  const authKey = authHeader?.replace(/^Bearer\s+/i, '');
+  const urlKey = new URL(req.url).searchParams.get('apiKey') || new URL(req.url).searchParams.get('api_key');
+
+  const raw = headerKey || authKey || urlKey;
+  if (!raw) return null;
+
+  const normalized = raw.trim();
+  return normalized.length ? normalized : null;
+}
+
 // CORS headers for cross-origin widget requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Authorization',
 };
 
 export async function OPTIONS() {
@@ -15,7 +28,7 @@ export async function OPTIONS() {
 // Public endpoint - returns widget configuration (no sensitive data)
 export async function GET(req: NextRequest) {
   try {
-    const apiKey = req.headers.get('X-API-Key');
+    const apiKey = extractApiKey(req);
 
     if (!apiKey) {
       return NextResponse.json(
@@ -45,12 +58,13 @@ export async function GET(req: NextRequest) {
         business_hours,
         timezone,
         is_active,
-        properties!inner(id, name)
+        properties(id, name)
       `)
       .eq('api_key', apiKey)
       .single();
 
     if (error || !config) {
+      console.error('[LumaLeasing] Config fetch failed', { error, hasConfig: Boolean(config) });
       return NextResponse.json(
         { error: 'Invalid API key or config not found' },
         { status: 404, headers: corsHeaders }

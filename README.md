@@ -82,6 +82,28 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 
 ---
 
+## ✨ Latest Updates (Dec 16, 2025)
+
+### 🔧 Widget Sessions Fix (Dec 16, 2025)
+**Resolved critical LumaLeasing widget session tracking issues!**
+
+#### What Was Fixed
+- **Widget Session Tracking:** Fixed `widget_sessions` table schema to properly track anonymous and authenticated chat sessions
+- **RLS Policies:** Enhanced Row Level Security for proper multi-tenant isolation
+- **Lead Capture:** Improved lead creation flow from widget conversations
+- **Session Persistence:** Widget sessions now correctly maintain state across page refreshes
+
+#### Migration Applied
+- `20251216000000_fix_widget_sessions.sql` - Corrected session tracking schema
+
+**What This Means:**
+- 🔒 Widget sessions are now properly secured with RLS
+- 📊 Accurate analytics for anonymous vs authenticated conversations
+- 🎯 Better lead attribution from widget interactions
+- 🔄 Seamless session management across the widget lifecycle
+
+---
+
 ## ✨ Latest Updates (Dec 2025)
 
 ### 📊 MultiChannel BI - CSV Import Feature! (Dec 11, 2025)

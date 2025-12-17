@@ -72,6 +72,7 @@ Thumbs.db
 # WordPress Plugin - Distributed separately
 lumaleasing-wordpress/
 lumaleasing-wordpress-*.zip
+lumaleasing*.zip
 LUMALEASING_WORDPRESS_COMPLETE.md
 client_secret_*.json
 

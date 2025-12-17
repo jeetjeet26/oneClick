@@ -1,8 +1,5 @@
 ***CRITICAL*** **ALWAYS** unset `NODE_ENV` environment variable when working in this project. See https://github.com/github/copilot-cli/issues/151
 
-This is Recharts repository. Recharts is a React-based charting library.
-The goal is to provide a simple, declarative, and composable way to build charts.
-We value consistency, usability, and performance. Accessibility is important.
 
 We do not solve internationalization. Do not hardcode any strings or formatting choices in the library code,
 we expect the users of Recharts to provide localized strings as desired.

@@ -18,7 +18,11 @@
 
   // Configuration
   const WIDGET_VERSION = '1.0.0';
-  const API_BASE = window.LUMALEASING_API_BASE || '';
+  
+  // API_BASE is read dynamically to handle async script loading
+  function getApiBase() {
+    return window.LUMALEASING_API_BASE || '';
+  }
   
   // State
   let config = null;
@@ -78,7 +82,7 @@
     options = options || {};
 
     try {
-      const response = await fetch(API_BASE + '/api/lumaleasing/config', {
+      const response = await fetch(getApiBase() + '/api/lumaleasing/config', {
         headers: { 'X-API-Key': apiKey }
       });
 
@@ -541,6 +545,70 @@
     }
   }
 
+  // Extract contact info from text
+  function extractContactInfo(text) {
+    const info = {};
+    
+    // Email pattern
+    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) info.email = emailMatch[0];
+    
+    // Phone pattern (various formats)
+    const phoneMatch = text.match(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}/);
+    if (phoneMatch) info.phone = phoneMatch[0].replace(/[^\d+]/g, '');
+    
+    // Name pattern - look for "I'm [Name]" or "my name is [Name]" or just capitalized words before email
+    const namePatterns = [
+      /(?:i'm|im|i am|my name is|this is|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
+      /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+[a-zA-Z0-9._%+-]+@/,
+      /^([A-Z][a-z]+\s+[A-Z][a-z]+)/
+    ];
+    
+    for (const pattern of namePatterns) {
+      const nameMatch = text.match(pattern);
+      if (nameMatch) {
+        const nameParts = nameMatch[1].trim().split(/\s+/);
+        info.first_name = nameParts[0];
+        if (nameParts.length > 1) info.last_name = nameParts.slice(1).join(' ');
+        break;
+      }
+    }
+    
+    return Object.keys(info).length > 0 ? info : null;
+  }
+
+  // Save lead to backend
+  async function saveLead(info) {
+    if (!info || !info.email) return null;
+    
+    try {
+      const response = await fetch(getApiBase() + '/api/lumaleasing/lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': config.apiKey,
+          'X-Visitor-ID': visitorId
+        },
+        body: JSON.stringify({
+          leadInfo: info,
+          sessionId: sessionId,
+          conversationId: conversationId
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        leadCaptured = true;
+        leadInfo = { ...leadInfo, ...info };
+        console.log('LumaLeasing: Lead captured', data.leadId);
+        return data.leadId;
+      }
+    } catch (error) {
+      console.error('LumaLeasing: Failed to save lead', error);
+    }
+    return null;
+  }
+
   // Send message
   async function sendMessage() {
     const input = document.getElementById('ll-input');
@@ -548,6 +616,17 @@
 
     const text = input.value.trim();
     input.value = '';
+
+    // Try to extract contact info from the message
+    const extractedInfo = extractContactInfo(text);
+    if (extractedInfo && !leadCaptured) {
+      // Merge with any existing info
+      Object.assign(leadInfo, extractedInfo);
+      if (extractedInfo.email) {
+        // Save lead immediately when we get an email
+        saveLead(leadInfo);
+      }
+    }
 
     // Add user message
     messages.push({
@@ -561,7 +640,7 @@
     renderWidget();
 
     try {
-      const response = await fetch(API_BASE + '/api/lumaleasing/chat', {
+      const response = await fetch(getApiBase() + '/api/lumaleasing/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -574,7 +653,7 @@
             content: m.content
           })),
           sessionId: sessionId,
-          leadInfo: leadCaptured ? leadInfo : undefined
+          leadInfo: leadCaptured ? leadInfo : (extractedInfo || undefined)
         })
       });
 
@@ -617,6 +696,10 @@
 
   // Open widget
   function openWidget() {
+    if (!config) {
+      console.warn('LumaLeasing: Widget not initialized. Check API key and network.');
+      return;
+    }
     isOpen = true;
     renderWidget();
   }

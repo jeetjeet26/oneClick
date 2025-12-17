@@ -1,12 +1,362 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/admin';
+import { sendEmail } from '@/utils/services/messaging';
 import OpenAI from 'openai';
+
+// Type for extracted conversation data
+interface ExtractedData {
+  lead: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  tour: {
+    requested: boolean;
+    date: string | null; // ISO date string
+    time: string | null; // HH:MM format
+    notes: string | null;
+  } | null;
+}
+
+// LLM-based extraction of lead info and tour requests from conversation
+async function extractAndProcessConversation(
+  openai: OpenAI,
+  supabase: ReturnType<typeof createServiceClient>,
+  messages: Array<{ role: string; content: string }>,
+  propertyId: string,
+  sessionId: string | null,
+  conversationId: string | null,
+  existingLeadId: string | null,
+  config: { properties?: { name?: string; address?: { street?: string } }; widget_name?: string }
+): Promise<void> {
+  console.log('[LumaLeasing] Starting extraction for property:', propertyId, 'session:', sessionId, 'conversation:', conversationId);
+  
+  // Build conversation text for analysis
+  const conversationText = messages
+    .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+    .join('\n');
+
+  // Extract structured data using LLM
+  const extractionPrompt = `Analyze this conversation and extract any contact information and tour booking requests.
+
+CONVERSATION:
+${conversationText}
+
+Extract the following if mentioned by the USER (not the assistant):
+1. Lead contact info: first name, last name, email, phone number
+2. Tour request: whether they want a tour, preferred date, preferred time, any special notes
+
+IMPORTANT:
+- Only extract info explicitly provided by the user
+- For dates, convert relative dates (like "tomorrow", "next Monday") to actual dates based on today being ${new Date().toISOString().split('T')[0]}
+- For times, use 24-hour format (HH:MM)
+- If info is not provided, use null
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "lead": {
+    "first_name": "string or null",
+    "last_name": "string or null", 
+    "email": "string or null",
+    "phone": "string or null"
+  },
+  "tour": {
+    "requested": true/false,
+    "date": "YYYY-MM-DD or null",
+    "time": "HH:MM or null",
+    "notes": "string or null"
+  }
+}`;
+
+  try {
+    const extraction = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: extractionPrompt }],
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+
+    const rawJson = extraction.choices[0].message.content;
+    if (!rawJson) return;
+
+    const data: ExtractedData = JSON.parse(rawJson);
+    console.log('[LumaLeasing] Extracted data:', JSON.stringify(data));
+
+    // Generate conversation summary for lead notes
+    const summaryPrompt = `Summarize this conversation in 2-3 concise sentences for a CRM note. Focus on:
+- What the prospect is interested in (unit types, amenities, etc.)
+- Their timeline/urgency
+- Any specific questions or concerns
+- Tour preferences if mentioned
+
+CONVERSATION:
+${conversationText}
+
+Write a professional CRM note (no bullet points, just flowing text):`;
+
+    const summaryResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: summaryPrompt }],
+      temperature: 0.3,
+      max_tokens: 150,
+    });
+
+    const conversationSummary = summaryResponse.choices[0].message.content?.trim() || null;
+
+    // Process lead info if we found new contact data
+    let leadId = existingLeadId;
+    const leadData = data.lead;
+
+    if (leadData && (leadData.email || leadData.phone)) {
+      // Check if lead already exists
+      if (leadData.email && !leadId) {
+        const { data: existing } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('property_id', propertyId)
+          .eq('email', leadData.email)
+          .single();
+        
+        if (existing) {
+          leadId = existing.id;
+        }
+      }
+
+      if (leadId) {
+        // Update existing lead with any new info
+        const updates: Record<string, string> = {};
+        if (leadData.first_name) updates.first_name = leadData.first_name;
+        if (leadData.last_name) updates.last_name = leadData.last_name;
+        if (leadData.phone) updates.phone = leadData.phone;
+        if (leadData.email) updates.email = leadData.email;
+        
+        // Add/append conversation summary to notes
+        if (conversationSummary) {
+          const { data: currentLead } = await supabase
+            .from('leads')
+            .select('notes')
+            .eq('id', leadId)
+            .single();
+          
+          const timestamp = new Date().toLocaleString('en-US', { 
+            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' 
+          });
+          const newNote = `[${timestamp}] ${conversationSummary}`;
+          updates.notes = currentLead?.notes 
+            ? `${currentLead.notes}\n\n${newNote}`
+            : newNote;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('leads').update(updates).eq('id', leadId);
+          console.log('[LumaLeasing] Updated lead:', leadId, updates);
+        }
+      } else {
+        // Create new lead
+        console.log('[LumaLeasing] Creating new lead for property:', propertyId, 'with data:', leadData);
+        
+        // Prepare lead notes with conversation summary
+        const timestamp = new Date().toLocaleString('en-US', { 
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' 
+        });
+        const leadNotes = conversationSummary 
+          ? `[${timestamp}] ${conversationSummary}`
+          : 'Initial contact via LumaLeasing widget';
+        
+        const { data: newLead, error } = await supabase
+          .from('leads')
+          .insert({
+            property_id: propertyId,
+            first_name: leadData.first_name || '',
+            last_name: leadData.last_name || '',
+            email: leadData.email || '',
+            phone: leadData.phone || '',
+            source: 'LumaLeasing Widget',
+            status: 'new',
+            notes: leadNotes,
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('[LumaLeasing] Failed to create lead:', error);
+        } else if (newLead) {
+          leadId = newLead.id;
+          console.log('[LumaLeasing] Created new lead:', leadId);
+
+          // Score the new lead
+          try {
+            const { data: scoreId } = await supabase.rpc('score_lead', { p_lead_id: leadId });
+            if (scoreId) {
+              // Get the score and update the lead
+              const { data: scoreData } = await supabase
+                .from('lead_scores')
+                .select('total_score, score_bucket')
+                .eq('id', scoreId)
+                .single();
+              
+              if (scoreData) {
+                await supabase
+                  .from('leads')
+                  .update({ 
+                    score: scoreData.total_score, 
+                    score_bucket: scoreData.score_bucket 
+                  })
+                  .eq('id', leadId);
+                console.log('[LumaLeasing] Scored new lead:', leadId, scoreData);
+              }
+            }
+          } catch (scoreError) {
+            console.error('[LumaLeasing] Failed to score lead:', scoreError);
+          }
+
+          // Update session and conversation with lead
+          if (sessionId) {
+            const { error: sessionError } = await supabase
+              .from('widget_sessions')
+              .update({ lead_id: leadId, converted_at: new Date().toISOString() })
+              .eq('id', sessionId);
+            if (sessionError) {
+              console.error('[LumaLeasing] Failed to update session:', sessionError);
+            } else {
+              console.log('[LumaLeasing] Updated session', sessionId, 'with lead', leadId);
+            }
+          } else {
+            console.warn('[LumaLeasing] No sessionId to update with lead');
+          }
+          if (conversationId) {
+            const { error: convError } = await supabase
+              .from('conversations')
+              .update({ lead_id: leadId })
+              .eq('id', conversationId);
+            if (convError) {
+              console.error('[LumaLeasing] Failed to update conversation:', convError);
+            }
+          }
+        }
+      }
+    }
+
+    // Process tour request if detected with date/time
+    const tourData = data.tour;
+    if (tourData?.requested && tourData.date && leadId) {
+      // Check if tour already exists for this lead on this date
+      const { data: existingTour } = await supabase
+        .from('tour_bookings')
+        .select('id')
+        .eq('lead_id', leadId)
+        .eq('scheduled_date', tourData.date)
+        .single();
+
+      if (!existingTour) {
+        // Create tour booking
+        const tourTime = tourData.time || '10:00';
+        const { data: booking, error: bookingError } = await supabase
+          .from('tour_bookings')
+          .insert({
+            property_id: propertyId,
+            lead_id: leadId,
+            scheduled_date: tourData.date,
+            scheduled_time: tourTime,
+            duration_minutes: 30,
+            special_requests: tourData.notes,
+            source: 'lumaleasing',
+            booked_via_conversation_id: conversationId,
+            status: 'confirmed',
+          })
+          .select()
+          .single();
+
+        if (!bookingError && booking) {
+          console.log('[LumaLeasing] Created tour booking:', booking.id);
+
+          // Create activity on lead
+          await supabase.from('lead_activities').insert({
+            lead_id: leadId,
+            type: 'tour_booked',
+            description: `Tour booked for ${tourData.date} at ${tourTime} via AI chat`,
+            metadata: { booking_id: booking.id, source: 'lumaleasing_extraction' },
+          });
+
+          // Update lead status
+          await supabase
+            .from('leads')
+            .update({ status: 'tour_booked' })
+            .eq('id', leadId);
+
+          // Re-score the lead (tour booking adds points)
+          try {
+            const { data: scoreId } = await supabase.rpc('score_lead', { p_lead_id: leadId });
+            if (scoreId) {
+              const { data: scoreData } = await supabase
+                .from('lead_scores')
+                .select('total_score, score_bucket')
+                .eq('id', scoreId)
+                .single();
+              
+              if (scoreData) {
+                await supabase
+                  .from('leads')
+                  .update({ 
+                    score: scoreData.total_score, 
+                    score_bucket: scoreData.score_bucket 
+                  })
+                  .eq('id', leadId);
+                console.log('[LumaLeasing] Re-scored lead after tour:', leadId, scoreData);
+              }
+            }
+          } catch (scoreError) {
+            console.error('[LumaLeasing] Failed to re-score lead:', scoreError);
+          }
+
+          // Send confirmation email if we have an email
+          if (leadData?.email) {
+            const propertyName = config.properties?.name || 'our community';
+            const formattedDate = new Date(tourData.date + 'T00:00:00').toLocaleDateString('en-US', { 
+              weekday: 'long', month: 'long', day: 'numeric' 
+            });
+            const hour = parseInt(tourTime.split(':')[0]);
+            const formattedTime = `${hour % 12 || 12}:${tourTime.split(':')[1]} ${hour >= 12 ? 'PM' : 'AM'}`;
+
+            sendEmail(
+              leadData.email,
+              `Your Tour at ${propertyName} is Confirmed! 📅`,
+              `Hi ${leadData.first_name || 'there'}!\n\nYour tour at ${propertyName} is confirmed!\n\n📅 Date: ${formattedDate}\n🕐 Time: ${formattedTime}\n\nWe look forward to seeing you!\n\nThe ${propertyName} Team`,
+            ).then(result => {
+              if (result.success) {
+                console.log('[LumaLeasing] Tour confirmation email sent to', leadData.email);
+              } else {
+                console.error('[LumaLeasing] Failed to send tour email:', result.error);
+              }
+            }).catch(err => console.error('[LumaLeasing] Email error:', err));
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[LumaLeasing] Extraction failed:', error);
+  }
+}
+
+function extractApiKey(req: NextRequest): string | null {
+  const headerKey = req.headers.get('X-API-Key') || req.headers.get('x-api-key');
+  const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+  const authKey = authHeader?.replace(/^Bearer\s+/i, '');
+  const urlKey = new URL(req.url).searchParams.get('apiKey') || new URL(req.url).searchParams.get('api_key');
+
+  const raw = headerKey || authKey || urlKey;
+  if (!raw) return null;
+
+  const normalized = raw.trim();
+  return normalized.length ? normalized : null;
+}
 
 // CORS headers for cross-origin widget requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, X-Visitor-ID',
+  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, X-Visitor-ID, Authorization',
 };
 
 // Handle CORS preflight
@@ -16,7 +366,7 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = req.headers.get('X-API-Key');
+    const apiKey = extractApiKey(req);
     const visitorId = req.headers.get('X-Visitor-ID');
 
     if (!apiKey) {
@@ -46,12 +396,18 @@ export async function POST(req: NextRequest) {
     // 1. Validate API key and get config
     const { data: config, error: configError } = await supabase
       .from('lumaleasing_config')
-      .select('*, properties!inner(id, name, settings)')
+      // Avoid !inner join so an orphaned config row doesn't look like "invalid key"
+      .select('*, properties(id, name, settings)')
       .eq('api_key', apiKey)
       .eq('is_active', true)
       .single();
 
     if (configError || !config) {
+      // This is the error users see in WordPress; log details for Vercel runtime logs.
+      console.error('[LumaLeasing] API key validation failed', {
+        hasConfig: Boolean(config),
+        error: configError,
+      });
       return NextResponse.json(
         { error: 'Invalid or inactive API key' },
         { status: 401, headers: corsHeaders }
@@ -302,7 +658,29 @@ Remember: You represent ${propertyName}. Provide exceptional customer service wi
       });
     }
 
-    // 12. Update session activity
+    // 12. LLM-based extraction of lead info and tour requests
+    // Must await in serverless environment or it may not complete
+    let extractionRan = false;
+    let extractionError = null;
+    try {
+      await extractAndProcessConversation(
+        openai,
+        supabase,
+        messages,
+        propertyId,
+        activeSessionId,
+        conversationId,
+        leadId,
+        config
+      );
+      extractionRan = true;
+      console.log('[LumaLeasing] Extraction completed successfully');
+    } catch (err) {
+      extractionError = err instanceof Error ? err.message : String(err);
+      console.error('[LumaLeasing] Extraction error:', err);
+    }
+
+    // 13. Update session activity
     if (activeSessionId) {
       await supabase
         .from('widget_sessions')
@@ -313,7 +691,7 @@ Remember: You represent ${propertyName}. Provide exceptional customer service wi
         .eq('id', activeSessionId);
     }
 
-    // 13. Check if we should prompt for lead capture
+    // 14. Check if we should prompt for lead capture
     const shouldPromptLeadCapture = !leadId && 
       config.collect_email && 
       (widgetSession?.message_count || 0) >= 2;
@@ -325,6 +703,11 @@ Remember: You represent ${propertyName}. Provide exceptional customer service wi
       shouldPromptLeadCapture,
       leadCapturePrompt: shouldPromptLeadCapture ? config.lead_capture_prompt : null,
       wantsTour,
+      _debug: {
+        extractionRan,
+        extractionError,
+        hasLeadId: !!leadId,
+      }
     }, { headers: corsHeaders });
 
   } catch (error) {

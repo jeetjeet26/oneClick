@@ -23,16 +23,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { 
-      sessionId,
-      firstName,
-      lastName,
-      email,
-      phone,
-      moveInDate,
-      bedroomPreference,
-      notes,
-    } = await req.json();
+    const body = await req.json();
+    
+    // Support both direct fields and leadInfo wrapper
+    const leadInfo = body.leadInfo || body;
+    const sessionId = body.sessionId;
+    const conversationId = body.conversationId;
+    
+    const firstName = leadInfo.first_name || leadInfo.firstName || '';
+    const lastName = leadInfo.last_name || leadInfo.lastName || '';
+    const email = leadInfo.email || '';
+    const phone = leadInfo.phone || '';
+    const moveInDate = leadInfo.moveInDate;
+    const bedroomPreference = leadInfo.bedroomPreference;
+    const notes = leadInfo.notes;
 
     if (!email && !phone) {
       return NextResponse.json(
@@ -142,6 +146,14 @@ export async function POST(req: NextRequest) {
         .from('conversations')
         .update({ lead_id: leadId })
         .eq('widget_session_id', sessionId);
+    }
+
+    // Update specific conversation if provided
+    if (conversationId && leadId) {
+      await supabase
+        .from('conversations')
+        .update({ lead_id: leadId })
+        .eq('id', conversationId);
     }
 
     return NextResponse.json({
