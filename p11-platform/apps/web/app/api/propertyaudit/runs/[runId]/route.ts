@@ -1,0 +1,161 @@
+/**
+ * PropertyAudit Run Details API
+ * Get detailed run data with answers
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+
+export interface GeoAnswer {
+  id: string
+  queryId: string
+  queryText: string
+  queryType: string
+  presence: boolean
+  llmRank: number | null
+  linkRank: number | null
+  sov: number | null
+  flags: string[]
+  answerSummary: string | null
+  orderedEntities: Array<{
+    name: string
+    domain: string
+    rationale: string
+    position: number
+  }>
+  citations: Array<{
+    url: string
+    domain: string
+    isBrandDomain: boolean
+  }>
+}
+
+// GET: Get run details with answers
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ runId: string }> }
+) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { runId } = await params
+
+    // Fetch run with score
+    const { data: run, error: runError } = await supabase
+      .from('geo_runs')
+      .select(`
+        *,
+        geo_scores (*)
+      `)
+      .eq('id', runId)
+      .single()
+
+    if (runError || !run) {
+      return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    }
+
+    // Fetch answers with queries and citations
+    const { data: answers, error: answersError } = await supabase
+      .from('geo_answers')
+      .select(`
+        *,
+        geo_queries (
+          text,
+          type,
+          geo
+        ),
+        geo_citations (
+          url,
+          domain,
+          is_brand_domain
+        )
+      `)
+      .eq('run_id', runId)
+      .order('created_at', { ascending: true })
+
+    if (answersError) {
+      console.error('Error fetching answers:', answersError)
+      return NextResponse.json({ error: 'Failed to fetch answers' }, { status: 500 })
+    }
+
+    // Format answers
+    const formattedAnswers: GeoAnswer[] = (answers || []).map(answer => ({
+      id: answer.id,
+      queryId: answer.query_id,
+      queryText: answer.geo_queries?.text || '',
+      queryType: answer.geo_queries?.type || '',
+      presence: answer.presence,
+      llmRank: answer.llm_rank,
+      linkRank: answer.link_rank,
+      sov: answer.sov,
+      flags: answer.flags || [],
+      answerSummary: answer.answer_summary,
+      orderedEntities: answer.ordered_entities || [],
+      rawResponse: answer.raw_json,
+      citations: (answer.geo_citations || []).map((c: Record<string, unknown>) => ({
+        url: c.url,
+        domain: c.domain,
+        isBrandDomain: c.is_brand_domain,
+      })),
+    }))
+
+    // Group answers by query type
+    const answersByType = {
+      branded: formattedAnswers.filter(a => a.queryType === 'branded'),
+      category: formattedAnswers.filter(a => a.queryType === 'category'),
+      comparison: formattedAnswers.filter(a => a.queryType === 'comparison'),
+      local: formattedAnswers.filter(a => a.queryType === 'local'),
+      faq: formattedAnswers.filter(a => a.queryType === 'faq'),
+    }
+
+    // Calculate stats
+    const stats = {
+      totalQueries: formattedAnswers.length,
+      withPresence: formattedAnswers.filter(a => a.presence).length,
+      avgLlmRank: calculateAverage(formattedAnswers.filter(a => a.llmRank !== null).map(a => a.llmRank as number)),
+      avgLinkRank: calculateAverage(formattedAnswers.filter(a => a.linkRank !== null).map(a => a.linkRank as number)),
+      avgSov: calculateAverage(formattedAnswers.filter(a => a.sov !== null).map(a => a.sov as number)),
+      flaggedCount: formattedAnswers.filter(a => a.flags.length > 0).length,
+    }
+
+    const scoreData = run.geo_scores?.[0]
+
+    return NextResponse.json({
+      run: {
+        id: run.id,
+        propertyId: run.property_id,
+        surface: run.surface,
+        modelName: run.model_name,
+        status: run.status,
+        queryCount: run.query_count,
+        startedAt: run.started_at,
+        finishedAt: run.finished_at,
+        errorMessage: run.error_message,
+      },
+      score: scoreData ? {
+        overallScore: scoreData.overall_score,
+        visibilityPct: scoreData.visibility_pct,
+        avgLlmRank: scoreData.avg_llm_rank,
+        avgLinkRank: scoreData.avg_link_rank,
+        avgSov: scoreData.avg_sov,
+        breakdown: scoreData.breakdown,
+      } : null,
+      answers: formattedAnswers,
+      answersByType,
+      stats,
+    })
+  } catch (error) {
+    console.error('PropertyAudit Run Details GET Error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+function calculateAverage(values: number[]): number | null {
+  if (values.length === 0) return null
+  return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100
+}

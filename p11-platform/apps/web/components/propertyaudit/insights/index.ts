@@ -1,0 +1,1 @@
+export { CompetitorInsights } from './CompetitorInsights'

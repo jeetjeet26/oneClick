@@ -326,6 +326,7 @@ export interface GenerateWebsiteRequest {
   propertyId: string
   preferences?: GenerationPreferences
   prompt?: string // conversation-start: user describes desired site; KB-driven
+  brandContext?: any // Pre-analyzed brand context from /api/siteforge/analyze - avoids re-running Brand Agent
 }
 
 export interface GenerateWebsiteResponse {
@@ -359,6 +360,46 @@ export interface RefineRequest {
     emphasis?: 'more amenities' | 'more location' | 'more value'
     cta?: 'stronger' | 'softer'
   }
+}
+
+// === AGENTIC SYSTEM TYPES (Added December 16, 2025) ===
+
+// Blueprint patch operations for conversational editing
+export type BlueprintPatchOperation =
+  | {
+      op: 'update_section'
+      sectionId: string
+      content?: Record<string, unknown>
+      variant?: string
+      cssClasses?: string[]
+      reasoning?: string
+    }
+  | {
+      op: 'add_section'
+      pageSlug: string
+      afterSectionId?: string
+      section: {
+        type: string
+        acfBlock: ACFBlockType
+        content: Record<string, unknown>
+        reasoning: string
+        label?: string
+        variant?: string
+      }
+    }
+  | { op: 'remove_section'; sectionId: string }
+  | { op: 'move_section'; sectionId: string; toOrder: number }
+
+// Extended SiteBlueprint with agentic outputs
+export interface SiteBlueprintAgentic extends SiteBlueprint {
+  propertyId?: string
+  brandContext?: any
+  architecture?: any
+  designSystem?: any
+  photoManifest?: any
+  qualityReport?: any
+  generationTime?: number
+  agentLogs?: Array<{ agent: string; action: string; timestamp: string }>
 }
 
 

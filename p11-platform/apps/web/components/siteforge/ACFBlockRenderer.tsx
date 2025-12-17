@@ -6,25 +6,100 @@
 
 import React from 'react'
 
+export interface DesignSystem {
+  colors?: {
+    primary?: string
+    secondary?: string
+    accent?: string
+    background?: string
+    text?: string
+  }
+  typography?: {
+    headingFont?: string
+    bodyFont?: string
+  }
+}
+
 interface BlockRendererProps {
   blockType: string
   content: any
   className?: string
+  designSystem?: DesignSystem
+}
+
+/**
+ * Map semantic section types to ACF block types
+ * Used as fallback when Architecture Agent doesn't specify block
+ */
+const semanticTypeToBlock: Record<string, string> = {
+  'hero': 'acf/top-slides',
+  'conversion': 'acf/form',
+  'messaging': 'acf/text-section',
+  'value_proposition': 'acf/text-section',
+  'amenities': 'acf/content-grid',
+  'amenity': 'acf/feature-section',
+  'gallery': 'acf/gallery',
+  'floorplans': 'acf/plans-availability',
+  'floor_plans': 'acf/plans-availability',
+  'contact': 'acf/form',
+  'cta': 'acf/links',
+  'neighborhood': 'acf/poi',
+  'location': 'acf/map',
+  'map': 'acf/map',
+  'faq': 'acf/accordion-section',
+  'features': 'acf/feature-section',
+  'lifestyle': 'acf/feature-section',
+  'intro': 'acf/text-section',
+  'about': 'acf/text-section',
+  'text': 'acf/text-section',
+}
+
+/**
+ * Generate CSS custom properties from design system
+ */
+function getDesignSystemStyles(designSystem?: DesignSystem): React.CSSProperties {
+  if (!designSystem) return {}
+  
+  const colors = designSystem.colors || {}
+  const typography = designSystem.typography || {}
+  
+  return {
+    '--brand-primary': colors.primary || '#4F46E5',
+    '--brand-secondary': colors.secondary || '#10B981',
+    '--brand-accent': colors.accent || '#F59E0B',
+    '--brand-background': colors.background || '#FFFFFF',
+    '--brand-text': colors.text || '#1F2937',
+    '--font-heading': typography.headingFont ? `'${typography.headingFont}', serif` : "'Playfair Display', serif",
+    '--font-body': typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : "'Inter', sans-serif",
+  } as React.CSSProperties
 }
 
 /**
  * Main renderer that delegates to specific block renderers
  */
-export function ACFBlockRenderer({ blockType, content, className = '' }: BlockRendererProps) {
+export function ACFBlockRenderer({ blockType, content, className = '', designSystem }: BlockRendererProps) {
   if (!content || Object.keys(content).length === 0) {
     return (
-      <div className={`p-4 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 text-sm ${className}`}>
-        No content generated for this block
+      <div className={`p-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg ${className}`}>
+        <div className="flex items-start gap-3">
+          <span className="text-yellow-600 dark:text-yellow-400 text-xl">⚠️</span>
+          <div>
+            <p className="text-yellow-800 dark:text-yellow-200 font-medium">
+              Content not generated for this section
+            </p>
+            <p className="text-yellow-700 dark:text-yellow-300 text-sm mt-1">
+              Click this section and describe what content you'd like to add.
+            </p>
+            <p className="text-yellow-600 dark:text-yellow-400 text-xs mt-2">
+              Block type: {blockType}
+            </p>
+          </div>
+        </div>
       </div>
     )
   }
 
-  const renderers: Record<string, React.FC<{ content: any }>> = {
+  const renderers: Record<string, React.FC<{ content: any; designSystem?: DesignSystem }>> = {
     'acf/top-slides': HeroSlides,
     'acf/text-section': TextSection,
     'acf/content-grid': ContentGrid,
@@ -41,7 +116,17 @@ export function ACFBlockRenderer({ blockType, content, className = '' }: BlockRe
     'acf/poi': PointsOfInterest
   }
 
-  const Renderer = renderers[blockType]
+  // Try direct match first, then fall back to semantic type mapping
+  let resolvedBlockType = blockType
+  if (!renderers[blockType]) {
+    // Try semantic type mapping
+    const mappedType = semanticTypeToBlock[blockType?.toLowerCase()]
+    if (mappedType) {
+      resolvedBlockType = mappedType
+    }
+  }
+  
+  const Renderer = renderers[resolvedBlockType]
   
   if (!Renderer) {
     return (
@@ -52,9 +137,12 @@ export function ACFBlockRenderer({ blockType, content, className = '' }: BlockRe
     )
   }
 
+  // Apply design system styles as CSS custom properties
+  const brandStyles = getDesignSystemStyles(designSystem)
+
   return (
-    <div className={className}>
-      <Renderer content={content} />
+    <div className={className} style={brandStyles}>
+      <Renderer content={content} designSystem={designSystem} />
     </div>
   )
 }
@@ -62,23 +150,68 @@ export function ACFBlockRenderer({ blockType, content, className = '' }: BlockRe
 /**
  * Hero Slides - Top carousel with CTAs
  */
-function HeroSlides({ content }: { content: any }) {
+function HeroSlides({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const slides = content.slides || []
+  const colors = designSystem?.colors || {}
+  const typography = designSystem?.typography || {}
+  
+  // Handle empty slides with fallback
+  if (slides.length === 0) {
+    return (
+      <div 
+        className="relative rounded-lg overflow-hidden p-12 text-white"
+        style={{ 
+          background: colors.primary 
+            ? `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary || colors.primary} 100%)`
+            : 'linear-gradient(135deg, #1F2937 0%, #111827 100%)'
+        }}
+      >
+        <div className="max-w-2xl">
+          <h2 
+            className="text-3xl md:text-4xl font-bold mb-3"
+            style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+          >
+            Hero Content Pending
+          </h2>
+          <p className="text-lg text-gray-300 mb-6">
+            Click to edit and add your property's headline, tagline, and call-to-action.
+          </p>
+        </div>
+      </div>
+    )
+  }
   
   return (
-    <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg overflow-hidden">
+    <div 
+      className="relative rounded-lg overflow-hidden"
+      style={{ 
+        background: colors.primary 
+          ? `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary || colors.primary} 100%)`
+          : 'linear-gradient(135deg, #1F2937 0%, #111827 100%)'
+      }}
+    >
       {slides.map((slide: any, idx: number) => (
         <div key={idx} className="p-8 md:p-12 text-white">
           <div className="max-w-2xl">
-            <h2 className="text-3xl md:text-4xl font-bold mb-3">
+            <h2 
+              className="text-3xl md:text-4xl font-bold mb-3"
+              style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+            >
               {slide.headline}
             </h2>
-            <p className="text-lg text-gray-300 mb-6">
+            <p 
+              className="text-lg text-gray-200 mb-6"
+              style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
+            >
               {slide.subheadline}
             </p>
             <a 
               href={slide.cta_link} 
-              className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-lg transition"
+              className="inline-block text-white font-semibold px-6 py-3 rounded-lg transition hover:opacity-90"
+              style={{ 
+                backgroundColor: colors.accent || colors.primary || '#4F46E5',
+                fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined
+              }}
             >
               {slide.cta_text}
             </a>
@@ -97,7 +230,9 @@ function HeroSlides({ content }: { content: any }) {
 /**
  * Text Section - Headline + content block
  */
-function TextSection({ content }: { content: any }) {
+function TextSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
+  const typography = designSystem?.typography || {}
+  
   const bgClasses: Record<string, string> = {
     white: 'bg-white dark:bg-gray-900',
     light: 'bg-gray-50 dark:bg-gray-800',
@@ -115,11 +250,15 @@ function TextSection({ content }: { content: any }) {
   return (
     <div className={`p-6 md:p-8 rounded-lg ${bgClass}`}>
       <div className={`max-w-3xl ${alignClass}`}>
-        <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
+        <h3 
+          className="text-2xl font-bold mb-4 text-gray-900 dark:text-white"
+          style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+        >
           {content.headline}
         </h3>
         <div 
           className="prose dark:prose-invert max-w-none text-gray-600 dark:text-gray-300"
+          style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
           dangerouslySetInnerHTML={{ __html: content.content }}
         />
       </div>
@@ -130,9 +269,11 @@ function TextSection({ content }: { content: any }) {
 /**
  * Content Grid - Grid of items with icons
  */
-function ContentGrid({ content }: { content: any }) {
+function ContentGrid({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const items = content.items || []
   const cols = content.columns || 3
+  const colors = designSystem?.colors || {}
+  const typography = designSystem?.typography || {}
   
   const colsClasses: Record<string, string> = {
     '2': 'md:grid-cols-2',
@@ -141,21 +282,36 @@ function ContentGrid({ content }: { content: any }) {
   }
   const colsClass = colsClasses[String(cols)] || 'md:grid-cols-3'
 
+  // Generate lighter tint of primary color for icon background
+  const iconBgColor = colors.primary ? `${colors.primary}20` : undefined
+
   return (
     <div className={`grid grid-cols-1 ${colsClass} gap-6 p-4`}>
       {items.map((item: any, idx: number) => (
         <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-100 dark:border-gray-700">
           {item.icon && (
-            <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center mb-4">
-              <span className="text-indigo-600 dark:text-indigo-400 text-xl">
+            <div 
+              className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
+              style={{ 
+                backgroundColor: iconBgColor || 'rgb(238 242 255)',
+                color: colors.primary || '#4F46E5'
+              }}
+            >
+              <span className="text-xl">
                 {getIconEmoji(item.icon)}
               </span>
             </div>
           )}
-          <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+          <h4 
+            className="font-semibold text-gray-900 dark:text-white mb-2"
+            style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+          >
             {item.headline}
           </h4>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p 
+            className="text-sm text-gray-600 dark:text-gray-400"
+            style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
+          >
             {item.description}
           </p>
         </div>
@@ -167,8 +323,10 @@ function ContentGrid({ content }: { content: any }) {
 /**
  * Feature Section - Image + text side by side
  */
-function FeatureSection({ content }: { content: any }) {
+function FeatureSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const isImageLeft = content.layout === 'image-left'
+  const colors = designSystem?.colors || {}
+  const typography = designSystem?.typography || {}
   
   return (
     <div className={`flex flex-col ${isImageLeft ? 'md:flex-row' : 'md:flex-row-reverse'} gap-8 p-4 items-center`}>
@@ -180,17 +338,22 @@ function FeatureSection({ content }: { content: any }) {
         </div>
       </div>
       <div className="w-full md:w-1/2">
-        <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
+        <h3 
+          className="text-2xl font-bold mb-4 text-gray-900 dark:text-white"
+          style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+        >
           {content.headline}
         </h3>
         <div 
           className="prose dark:prose-invert max-w-none text-gray-600 dark:text-gray-300 mb-6"
+          style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
           dangerouslySetInnerHTML={{ __html: content.content }}
         />
         {content.cta_text && (
           <a 
             href={content.cta_link} 
-            className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2 rounded-lg transition"
+            className="inline-block text-white font-medium px-5 py-2 rounded-lg transition hover:opacity-90"
+            style={{ backgroundColor: colors.primary || '#4F46E5' }}
           >
             {content.cta_text}
           </a>
@@ -203,7 +366,7 @@ function FeatureSection({ content }: { content: any }) {
 /**
  * Gallery - Image grid
  */
-function Gallery({ content }: { content: any }) {
+function Gallery({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const indices = content.image_indices || []
   const layout = content.layout || 'grid'
   
@@ -223,13 +386,22 @@ function Gallery({ content }: { content: any }) {
 /**
  * Form Section - Contact/inquiry form
  */
-function FormSection({ content }: { content: any }) {
+function FormSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
+  const colors = designSystem?.colors || {}
+  const typography = designSystem?.typography || {}
+  
   return (
     <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-8 max-w-xl mx-auto">
-      <h3 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white text-center">
+      <h3 
+        className="text-2xl font-bold mb-2 text-gray-900 dark:text-white text-center"
+        style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+      >
         {content.heading}
       </h3>
-      <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
+      <p 
+        className="text-gray-600 dark:text-gray-400 mb-6 text-center"
+        style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
+      >
         {content.subheading}
       </p>
       <div className="space-y-4">
@@ -257,7 +429,10 @@ function FormSection({ content }: { content: any }) {
           className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
           disabled
         />
-        <button className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg">
+        <button 
+          className="w-full text-white font-semibold py-3 rounded-lg transition hover:opacity-90"
+          style={{ backgroundColor: colors.primary || '#4F46E5' }}
+        >
           Submit
         </button>
       </div>
@@ -268,7 +443,7 @@ function FormSection({ content }: { content: any }) {
 /**
  * Map Section - Google Maps placeholder
  */
-function MapSection({ content }: { content: any }) {
+function MapSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   return (
     <div className="p-4">
       <div className="bg-gray-200 dark:bg-gray-700 rounded-lg aspect-video flex items-center justify-center">
@@ -289,8 +464,9 @@ function MapSection({ content }: { content: any }) {
 /**
  * Links Section - CTA buttons
  */
-function LinksSection({ content }: { content: any }) {
+function LinksSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const links = content.links || []
+  const colors = designSystem?.colors || {}
   
   return (
     <div className="flex flex-wrap gap-4 justify-center p-4">
@@ -298,11 +474,12 @@ function LinksSection({ content }: { content: any }) {
         <a
           key={idx}
           href={link.url}
-          className={`px-6 py-3 rounded-lg font-medium transition ${
-            link.style === 'primary'
-              ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+          className={`px-6 py-3 rounded-lg font-medium transition hover:opacity-90 ${
+            link.style !== 'primary'
+              ? 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+              : 'text-white'
           }`}
+          style={link.style === 'primary' ? { backgroundColor: colors.primary || '#4F46E5' } : undefined}
         >
           {link.text}
         </a>
@@ -314,19 +491,24 @@ function LinksSection({ content }: { content: any }) {
 /**
  * Accordion Section - FAQ style
  */
-function AccordionSection({ content }: { content: any }) {
+function AccordionSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const items = content.items || []
+  const typography = designSystem?.typography || {}
   
   return (
     <div className="space-y-3 p-4">
       {items.map((item: any, idx: number) => (
         <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 dark:bg-gray-800 px-4 py-3 font-medium text-gray-900 dark:text-white flex justify-between items-center">
+          <div 
+            className="bg-gray-50 dark:bg-gray-800 px-4 py-3 font-medium text-gray-900 dark:text-white flex justify-between items-center"
+            style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+          >
             {item.title}
             <span className="text-gray-400">▼</span>
           </div>
           <div 
             className="px-4 py-3 text-gray-600 dark:text-gray-300 prose dark:prose-invert max-w-none"
+            style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
             dangerouslySetInnerHTML={{ __html: item.content }}
           />
         </div>
@@ -338,7 +520,8 @@ function AccordionSection({ content }: { content: any }) {
 /**
  * Image Section - Single image
  */
-function ImageSection({ content }: { content: any }) {
+function ImageSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
+  const typography = designSystem?.typography || {}
   const sizeClasses: Record<string, string> = {
     full: 'w-full',
     large: 'max-w-4xl mx-auto',
@@ -352,7 +535,10 @@ function ImageSection({ content }: { content: any }) {
         <span className="text-gray-500 dark:text-gray-400">📷 Image #{content.image_index ?? 0}</span>
       </div>
       {content.caption && (
-        <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-2 italic">
+        <p 
+          className="text-center text-sm text-gray-500 dark:text-gray-400 mt-2 italic"
+          style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
+        >
           {content.caption}
         </p>
       )}
@@ -363,7 +549,7 @@ function ImageSection({ content }: { content: any }) {
 /**
  * HTML Section - Custom HTML
  */
-function HtmlSection({ content }: { content: any }) {
+function HtmlSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   return (
     <div 
       className="p-4"
@@ -375,8 +561,9 @@ function HtmlSection({ content }: { content: any }) {
 /**
  * Menu Section - Navigation links
  */
-function MenuSection({ content }: { content: any }) {
+function MenuSection({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const items = content.menu_items || []
+  const typography = designSystem?.typography || {}
   
   return (
     <div className="flex flex-wrap gap-2 justify-center p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
@@ -384,6 +571,7 @@ function MenuSection({ content }: { content: any }) {
         <span 
           key={idx}
           className="px-4 py-2 bg-white dark:bg-gray-700 rounded-full text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer transition"
+          style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
         >
           {item}
         </span>
@@ -395,14 +583,30 @@ function MenuSection({ content }: { content: any }) {
 /**
  * Plans Availability - Interactive floor plans placeholder
  */
-function PlansAvailability({ content }: { content: any }) {
+function PlansAvailability({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
+  const colors = designSystem?.colors || {}
+  const typography = designSystem?.typography || {}
+  
+  // Generate gradient from brand colors
+  const gradientFrom = colors.primary ? `${colors.primary}10` : 'rgb(238 242 255)'
+  const gradientTo = colors.secondary ? `${colors.secondary}10` : 'rgb(250 245 255)'
+  
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg p-8 text-center">
+    <div 
+      className="rounded-lg p-8 text-center"
+      style={{ background: `linear-gradient(135deg, ${gradientFrom} 0%, ${gradientTo} 100%)` }}
+    >
       <span className="text-4xl mb-4 block">🏠</span>
-      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+      <h4 
+        className="text-lg font-semibold text-gray-900 dark:text-white mb-2"
+        style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+      >
         Interactive Floor Plans
       </h4>
-      <p className="text-gray-600 dark:text-gray-400 text-sm">
+      <p 
+        className="text-gray-600 dark:text-gray-400 text-sm"
+        style={{ fontFamily: typography.bodyFont ? `'${typography.bodyFont}', sans-serif` : undefined }}
+      >
         Data source: {content.data_source || 'yardi'}
       </p>
       <p className="text-xs text-gray-400 mt-2">
@@ -415,12 +619,21 @@ function PlansAvailability({ content }: { content: any }) {
 /**
  * Points of Interest - Neighborhood map
  */
-function PointsOfInterest({ content }: { content: any }) {
+function PointsOfInterest({ content, designSystem }: { content: any; designSystem?: DesignSystem }) {
   const categories = content.categories || []
+  const colors = designSystem?.colors || {}
+  const typography = designSystem?.typography || {}
+  
+  // Generate category badge colors from brand
+  const badgeBg = colors.primary ? `${colors.primary}20` : 'rgb(238 242 255)'
+  const badgeText = colors.primary || '#4338CA'
   
   return (
     <div className="p-4">
-      <p className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+      <p 
+        className="text-lg font-medium text-gray-900 dark:text-white mb-4"
+        style={{ fontFamily: typography.headingFont ? `'${typography.headingFont}', serif` : undefined }}
+      >
         {content.intro_text}
       </p>
       <div className="bg-gray-200 dark:bg-gray-700 rounded-lg aspect-video flex items-center justify-center mb-4">
@@ -435,7 +648,8 @@ function PointsOfInterest({ content }: { content: any }) {
         {categories.map((cat: string, idx: number) => (
           <span 
             key={idx}
-            className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-sm capitalize"
+            className="px-3 py-1 rounded-full text-sm capitalize"
+            style={{ backgroundColor: badgeBg, color: badgeText }}
           >
             {cat}
           </span>

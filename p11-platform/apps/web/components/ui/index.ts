@@ -8,3 +8,4 @@ export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 export { Label } from './label'
 export { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './select'
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
+export { Textarea } from './textarea'

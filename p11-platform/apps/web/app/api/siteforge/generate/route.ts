@@ -5,10 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createServiceClient } from '@/utils/supabase/admin'
-import { getBrandIntelligence, getPropertyContext } from '@/utils/siteforge/brand-intelligence'
-import { planSiteArchitecture, generateAllPageContent, createSiteBlueprintFromPages } from '@/utils/siteforge/llm-orchestration'
-import { retrieveKbContext } from '@/utils/siteforge/kb'
-import type { GenerateWebsiteRequest, SiteContext } from '@/types/siteforge'
+import { SiteForgeOrchestrator } from '@/utils/siteforge/agents'
+import type { GenerateWebsiteRequest } from '@/types/siteforge'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: GenerateWebsiteRequest = await request.json()
-    const { propertyId, preferences, prompt } = body
+    const { propertyId, preferences, prompt, brandContext } = body
 
     if (!propertyId) {
       return NextResponse.json({ error: 'propertyId required' }, { status: 400 })
@@ -99,7 +97,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Start generation in background (don't wait)
-    generateWebsiteAsync(website.id, propertyId, preferences, prompt).catch(error => {
+    // Pass pre-analyzed brandContext to avoid running Brand Agent twice
+    generateWebsiteAsync(website.id, propertyId, preferences, prompt, brandContext).catch(error => {
       console.error('Background generation error:', error)
     })
 
@@ -120,157 +119,43 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Background generation process
- * Uses service client since this runs after HTTP response is sent
+ * Background generation process - AGENTIC VERSION
+ * Uses orchestrator to coordinate all agents
+ * 
+ * @param brandContext - Pre-analyzed brand context from /api/siteforge/analyze
+ *                       If provided, skips running Brand Agent again
  */
 async function generateWebsiteAsync(
   websiteId: string,
   propertyId: string,
   preferences?: any,
-  prompt?: string
+  prompt?: string,
+  brandContext?: any
 ) {
-  // Use service client for background tasks (no request context available)
   const supabase = createServiceClient()
   
   try {
-    // Update status: Analyzing brand
-    await updateStatus(websiteId, 'analyzing_brand', 10, 'Analyzing brand assets...')
-    
-    // 1. Gather brand intelligence
-    const brand = await getBrandIntelligence(propertyId)
-    
-    // 2. Get property context
-    const propertyContext = await getPropertyContext(propertyId)
-    
-    // 3. Get competitor intelligence
-    const { data: competitors } = await supabase
-      .from('competitor_snapshots')
-      .select('property_name, website_url')
-      .eq('property_id', propertyId)
-      .limit(5)
-    
-    // 4. Get knowledge base documents
-    const { data: documents } = await supabase
-      .from('documents')
-      .select('id, file_name, file_url, metadata')
-      .eq('property_id', propertyId)
-    
-    // Build KB context (conversation prompt + common property needs)
-    const kbQuery = [
-      prompt ? `User request: ${prompt}` : '',
-      `Property: ${propertyContext.name}`,
-      'amenities floor plans pricing availability pet policy parking location contact hours application tour scheduling',
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    const kb = await retrieveKbContext({
+    // Initialize orchestrator with all agents
+    const orchestrator = new SiteForgeOrchestrator(
       propertyId,
-      query: kbQuery,
-      matchCount: 8,
-      matchThreshold: 0.45
+      websiteId,
+      undefined // No existing WP instance yet
+    )
+    
+    // Generate complete blueprint (agents work autonomously)
+    // Pass pre-analyzed brandContext to skip re-running Brand Agent
+    const blueprint = await orchestrator.generate(preferences, brandContext)
+    
+    // Blueprint is already saved by orchestrator
+    console.log('✅ Agentic generation complete:', {
+      pages: blueprint.pages.length,
+      sections: blueprint.pages.reduce((sum, p) => sum + p.sections.length, 0),
+      quality: blueprint.qualityReport.score,
+      time: blueprint.generationTime
     })
-
-    const context: SiteContext = {
-      brand,
-      property: propertyContext,
-      competitors: {
-        sites: (competitors || []).map(c => ({
-          name: c.property_name,
-          url: c.website_url
-        })),
-        commonPatterns: [],
-        contentGaps: [],
-        designTrends: []
-      },
-      documents: (documents || []).map(d => ({
-        id: d.id,
-        fileName: d.file_name,
-        fileUrl: d.file_url,
-        type: d.metadata?.type || 'document'
-      })),
-      preferences,
-      userPrompt: prompt,
-      kbContext: kb.contextText
-    }
-    
-    // Update website with brand source
-    await supabase
-      .from('property_websites')
-      .update({
-        brand_source: brand.source,
-        brand_confidence: brand.confidence
-      })
-      .eq('id', websiteId)
-    
-    // Update status: Planning architecture
-    await updateStatus(websiteId, 'planning_architecture', 30, 'Planning site structure...')
-    
-    // 5. Plan site architecture with Gemini 3
-    const architecture = await planSiteArchitecture(context)
-    
-    // Save architecture
-    await supabase
-      .from('property_websites')
-      .update({
-        site_architecture: architecture
-      })
-      .eq('id', websiteId)
-    
-    // Update status: Generating content
-    await updateStatus(websiteId, 'generating_content', 50, 'Generating page content...')
-    
-    // 6. Generate content for all pages
-    const pages = await generateAllPageContent(architecture, context)
-    const blueprint = createSiteBlueprintFromPages(pages, 1)
-    
-    // Save generated pages
-    await supabase
-      .from('property_websites')
-      .update({
-        pages_generated: blueprint.pages,
-        site_blueprint: blueprint,
-        site_blueprint_version: 1,
-        site_blueprint_updated_at: blueprint.updatedAt
-      })
-      .eq('id', websiteId)
-
-    // Save version 1 in blueprint versions table (best-effort)
-    try {
-      await supabase
-        .from('siteforge_blueprint_versions')
-        .insert({
-          website_id: websiteId,
-          version: 1,
-          blueprint
-        })
-    } catch (e) {
-      console.warn('Failed to insert blueprint version record (non-fatal):', e)
-    }
-    
-    // Update status: Preparing assets
-    await updateStatus(websiteId, 'preparing_assets', 70, 'Preparing images and assets...')
-    
-    // 7. Gather and prepare assets
-    const assets = await gatherAssets(websiteId, propertyId, pages, supabase)
-    
-    // Update status: Ready for Preview (NOT auto-deploying)
-    // User must explicitly click "Deploy to WordPress" after reviewing the preview
-    await updateStatus(websiteId, 'ready_for_preview', 100, 'Website ready for preview!')
-    
-    const websiteData = await getWebsite(websiteId)
-    await supabase
-      .from('property_websites')
-      .update({
-        generation_completed_at: new Date().toISOString(),
-        generation_duration_seconds: Math.floor(
-          (Date.now() - new Date(websiteData?.generation_started_at || Date.now()).getTime()) / 1000
-        )
-      })
-      .eq('id', websiteId)
     
   } catch (error) {
-    console.error('Generation error:', error)
+    console.error('Agentic generation error:', error)
     
     await supabase
       .from('property_websites')
@@ -282,146 +167,7 @@ async function generateWebsiteAsync(
   }
 }
 
-/**
- * Update generation status
- * Uses service client for background context
- */
-async function updateStatus(
-  websiteId: string,
-  status: string,
-  progress: number,
-  step: string
-) {
-  const supabase = createServiceClient()
-  
-  await supabase
-    .from('property_websites')
-    .update({
-      generation_status: status,
-      generation_progress: progress,
-      current_step: step
-    })
-    .eq('id', websiteId)
-}
-
-/**
- * Get website record
- * Uses service client for background context
- */
-async function getWebsite(websiteId: string) {
-  const supabase = createServiceClient()
-  const { data } = await supabase
-    .from('property_websites')
-    .select('*')
-    .eq('id', websiteId)
-    .single()
-  return data
-}
-
-/**
- * Gather and prepare assets for the website
- * Analyzes generated pages to identify all image references
- * Creates asset records in website_assets table
- */
-async function gatherAssets(
-  websiteId: string, 
-  propertyId: string, 
-  pages: any[],
-  supabase: any
-) {
-  const assets: any[] = []
-  const imageIndicesUsed = new Set<number>()
-  
-  // Scan all pages and sections for image references
-  for (const page of pages) {
-    for (const section of page.sections || []) {
-      const content = section.content
-      if (!content) continue
-      
-      // Check for image_index references
-      if (typeof content.image_index === 'number') {
-        imageIndicesUsed.add(content.image_index)
-      }
-      
-      // Check slides array
-      if (Array.isArray(content.slides)) {
-        for (const slide of content.slides) {
-          if (typeof slide.image_index === 'number') {
-            imageIndicesUsed.add(slide.image_index)
-          }
-        }
-      }
-      
-      // Check image_indices array (gallery)
-      if (Array.isArray(content.image_indices)) {
-        for (const idx of content.image_indices) {
-          imageIndicesUsed.add(idx)
-        }
-      }
-      
-      // Check items array (content grids may have images)
-      if (Array.isArray(content.items)) {
-        for (const item of content.items) {
-          if (typeof item.image_index === 'number') {
-            imageIndicesUsed.add(item.image_index)
-          }
-        }
-      }
-    }
-  }
-  
-  // Try to get existing property images from storage
-  const { data: storageFiles } = await supabase.storage
-    .from('property-assets')
-    .list(`${propertyId}/photos`, {
-      limit: 50,
-      sortBy: { column: 'name', order: 'asc' }
-    })
-  
-  // Create asset records for each referenced image
-  for (const imageIndex of imageIndicesUsed) {
-    let fileUrl = null
-    let source = 'placeholder'
-    
-    // Check if we have a real file for this index
-    if (storageFiles && storageFiles[imageIndex]) {
-      const file = storageFiles[imageIndex]
-      const { data: urlData } = supabase.storage
-        .from('property-assets')
-        .getPublicUrl(`${propertyId}/photos/${file.name}`)
-      fileUrl = urlData?.publicUrl
-      source = 'storage'
-    }
-    
-    // Create placeholder URL if no real file
-    if (!fileUrl) {
-      fileUrl = `https://placehold.co/1200x800/1f2937/6366f1?text=Image+${imageIndex}`
-    }
-    
-    assets.push({
-      website_id: websiteId,
-      asset_type: 'image',
-      source: source,
-      file_url: fileUrl,
-      alt_text: `Property image ${imageIndex}`,
-      usage_context: { image_index: imageIndex },
-      optimized: false
-    })
-  }
-  
-  // Insert assets into database
-  if (assets.length > 0) {
-    const { error } = await supabase
-      .from('website_assets')
-      .insert(assets)
-    
-    if (error) {
-      console.error('Error inserting assets:', error)
-    }
-  }
-  
-  return assets
-}
+// Old asset gathering function removed - Photo Agent handles this now
 
 
 

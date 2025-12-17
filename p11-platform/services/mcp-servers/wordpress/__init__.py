@@ -1,0 +1,2 @@
+"""WordPress MCP Server Package"""
+

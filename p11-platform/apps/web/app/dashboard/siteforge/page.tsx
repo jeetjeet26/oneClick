@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePropertyContext } from '@/components/layout/PropertyContext'
-import { GenerationWizard } from '@/components/siteforge'
+import { ConversationalGenerationWizard } from '@/components/siteforge'
 import {
   Globe,
   Plus,
@@ -389,12 +389,11 @@ export default function SiteForgePage() {
 
       {/* Generation Wizard Modal */}
       {showGenerationWizard && currentProperty && (
-        <GenerationWizard
+        <ConversationalGenerationWizard
           propertyId={currentProperty.id}
           propertyName={currentProperty.name}
           open={showGenerationWizard}
           onClose={() => setShowGenerationWizard(false)}
-          onComplete={handleGenerationComplete}
         />
       )}
     </div>

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ACFBlockRenderer } from './ACFBlockRenderer'
+import { ACFBlockRenderer, type DesignSystem } from './ACFBlockRenderer'
 import type { GeneratedPage } from '@/types/siteforge'
 
 type WebsitePreviewData = {
@@ -18,7 +18,8 @@ type WebsitePreviewData = {
   generationStatus?: string
   brandSource?: string
   brandConfidence?: number
-  siteArchitecture?: { designDecisions?: any } | null
+  siteArchitecture?: { designDecisions?: any; designSystem?: DesignSystem } | null
+  designSystem?: DesignSystem
   pagesGenerated?: GeneratedPage[]
   assets?: unknown[]
   wpUrl?: string
@@ -114,9 +115,8 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          websiteId,
-          instruction,
-          selected: { pageSlug, sectionId: selectedSectionId }
+          sectionId: selectedSectionId,
+          userIntent: instruction
         })
       })
 
@@ -210,6 +210,12 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
   }
 
   const pages: GeneratedPage[] = website.pagesGenerated || []
+  
+  // Get design system from website data (can be at top level or in siteArchitecture)
+  const designSystem: DesignSystem | undefined = 
+    website.designSystem || 
+    website.siteArchitecture?.designSystem || 
+    undefined
 
   return (
     <div className="space-y-6">
@@ -361,7 +367,7 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                               {section.type}
                             </span>
                             <span className="text-xs text-gray-500">
-                              ({section.acfBlock})
+                              ({section.block || section.acfBlock})
                             </span>
                           </div>
                           <div className="text-xs text-gray-500">
@@ -422,8 +428,9 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                         {/* Visual Preview */}
                         <div className="bg-white dark:bg-gray-900">
                           <ACFBlockRenderer 
-                            blockType={section.acfBlock} 
-                            content={section.content} 
+                            blockType={section.block || section.acfBlock || section.type} 
+                            content={section.content}
+                            designSystem={designSystem}
                           />
                         </div>
                       </div>
