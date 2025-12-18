@@ -9,6 +9,8 @@ export * from './types'
 // Connectors
 export { OpenAIConnector } from './openai-connector'
 export { ClaudeConnector } from './claude-connector'
+export { OpenAINaturalConnector } from './openai-natural-connector'
+export { ClaudeNaturalConnector } from './claude-natural-connector'
 
 // Evaluator
 export {
@@ -20,3 +22,4 @@ export {
   getScoreBgColor,
   type ScoreBucket
 } from './evaluator'
+

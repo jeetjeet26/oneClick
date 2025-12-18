@@ -8,7 +8,7 @@ interface CreateQueryModalProps {
   onClose: () => void
   onSubmit: (query: {
     text: string
-    type: 'branded' | 'category' | 'comparison' | 'local' | 'faq'
+    type: 'branded' | 'category' | 'comparison' | 'local' | 'faq' | 'voice_search'
     weight: number
     geo?: string
   }) => Promise<void>
@@ -24,7 +24,7 @@ export function CreateQueryModal({
   propertyName
 }: CreateQueryModalProps) {
   const [text, setText] = useState('')
-  const [type, setType] = useState<'branded' | 'category' | 'comparison' | 'local' | 'faq'>('branded')
+  const [type, setType] = useState<'branded' | 'category' | 'comparison' | 'local' | 'faq' | 'voice_search'>('branded')
   const [weight, setWeight] = useState(1.0)
   const [geo, setGeo] = useState(defaultGeo || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -63,6 +63,7 @@ export function CreateQueryModal({
     { text: `${propertyName} vs [competitor]`, type: 'comparison' as const },
     { text: `Apartments near ${geo?.split(',')[0] || 'location'}`, type: 'local' as const },
     { text: `How much is rent in ${geo?.split(',')[0] || 'city'}?`, type: 'faq' as const },
+    { text: `How do I apply to ${propertyName}?`, type: 'voice_search' as const },
   ]
 
   return (
@@ -138,6 +139,7 @@ export function CreateQueryModal({
               <option value="comparison">Comparison - Brand vs competitors</option>
               <option value="local">Local - Geographic searches</option>
               <option value="faq">FAQ - Question-based queries</option>
+              <option value="voice_search">Voice Search - Conversational queries</option>
             </select>
           </div>
 
@@ -207,3 +209,4 @@ export function CreateQueryModal({
     </div>
   )
 }
+

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { createServiceClient } from '@/utils/supabase/admin'
 
 export interface GeoAnswer {
   id: string
@@ -17,6 +18,8 @@ export interface GeoAnswer {
   sov: number | null
   flags: string[]
   answerSummary: string | null
+  naturalResponse?: string | null
+  analysisMethod?: string | null
   orderedEntities: Array<{
     name: string
     domain: string
@@ -95,6 +98,8 @@ export async function GET(
       sov: answer.sov,
       flags: answer.flags || [],
       answerSummary: answer.answer_summary,
+      naturalResponse: answer.natural_response ?? null,
+      analysisMethod: answer.analysis_method ?? null,
       orderedEntities: answer.ordered_entities || [],
       rawResponse: answer.raw_json,
       citations: (answer.geo_citations || []).map((c: Record<string, unknown>) => ({
@@ -155,7 +160,57 @@ export async function GET(
   }
 }
 
+// DELETE: Delete a run (cascades to answers/citations/scores)
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ runId: string }> }
+) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { runId } = await params
+
+    // Authorize via RLS (user client): can the user see this run?
+    const { data: run, error: runError } = await supabase
+      .from('geo_runs')
+      .select('id, property_id, surface, started_at')
+      .eq('id', runId)
+      .single()
+
+    if (runError || !run) {
+      return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    }
+
+    // Service delete (bypasses RLS but we've already authorized)
+    const service = createServiceClient()
+    const { error: deleteError } = await service
+      .from('geo_runs')
+      .delete()
+      .eq('id', runId)
+
+    if (deleteError) {
+      console.error('Error deleting run:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete run' }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      deletedRunId: runId,
+      propertyId: run.property_id,
+    })
+  } catch (error) {
+    console.error('PropertyAudit Run Details DELETE Error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 function calculateAverage(values: number[]): number | null {
   if (values.length === 0) return null
   return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100
 }
+

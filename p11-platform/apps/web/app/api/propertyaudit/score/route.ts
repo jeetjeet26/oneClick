@@ -176,3 +176,4 @@ function getScoreBucket(score: number): 'excellent' | 'good' | 'fair' | 'poor' {
   if (score >= 25) return 'fair'
   return 'poor'
 }
+

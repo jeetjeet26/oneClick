@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Sparkles, Globe, CheckCircle2, AlertCircle, Clock, ChevronRight } from 'lucide-react'
+import { X, Sparkles, Globe, CheckCircle2, AlertCircle, Clock, ChevronRight, Trash2 } from 'lucide-react'
 import { ScoreRing, ScoreBreakdown } from '../score'
 import { AnswerPreview } from '../answer'
 
@@ -21,6 +21,8 @@ interface Answer {
   sov: number | null
   flags: string[]
   answerSummary: string
+  naturalResponse?: string | null
+  analysisMethod?: string | null
   orderedEntities: Array<{
     name: string
     domain: string
@@ -74,6 +76,7 @@ export function RunDetails({ runId, isOpen, onClose }: RunDetailsProps) {
   const [loading, setLoading] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<Answer | null>(null)
   const [filterType, setFilterType] = useState<'all' | 'present' | 'absent'>('all')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (isOpen && runId) {
@@ -95,6 +98,25 @@ export function RunDetails({ runId, isOpen, onClose }: RunDetailsProps) {
       console.error('Error fetching run details:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const deleteThisRun = async () => {
+    if (!runId) return
+    if (!confirm('Delete this run and all of its answers? This cannot be undone.')) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/propertyaudit/runs/${runId}`, { method: 'DELETE' })
+      if (res.ok) {
+        onClose()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        console.error('Failed to delete run:', data)
+      }
+    } catch (err) {
+      console.error('Error deleting run:', err)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -135,12 +157,23 @@ export function RunDetails({ runId, isOpen, onClose }: RunDetailsProps) {
                   <span>{data?.run.queryCount} queries</span>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="ml-4 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
+              <div className="ml-4 flex items-center gap-2">
+                <button
+                  onClick={deleteThisRun}
+                  disabled={deleting || loading}
+                  className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-50"
+                  title="Delete this run"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                  title="Close"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -280,3 +313,4 @@ export function RunDetails({ runId, isOpen, onClose }: RunDetailsProps) {
     </>
   )
 }
+

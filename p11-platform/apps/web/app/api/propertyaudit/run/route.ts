@@ -88,13 +88,25 @@ export async function POST(req: NextRequest) {
     }
 
     // Trigger processing for each run (fire and forget)
+    // Use 10 minute timeout since processing many queries takes a long time
     const baseUrl = req.nextUrl.origin
     for (const run of runs) {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 600000) // 10 minute timeout
+      
       fetch(`${baseUrl}/api/propertyaudit/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ runId: run.id }),
-      }).catch(err => console.error(`Failed to trigger processing for run ${run.id}:`, err))
+        signal: controller.signal,
+      })
+        .then(() => clearTimeout(timeoutId))
+        .catch(err => {
+          clearTimeout(timeoutId)
+          if (err.name !== 'AbortError') {
+            console.error(`Failed to trigger processing for run ${run.id}:`, err)
+          }
+        })
     }
 
     return NextResponse.json({
@@ -175,3 +187,4 @@ function formatRun(run: Record<string, unknown>): GeoRun {
     errorMessage: run.error_message as string | null,
   }
 }
+

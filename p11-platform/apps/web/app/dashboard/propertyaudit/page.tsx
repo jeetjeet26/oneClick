@@ -13,6 +13,16 @@ import {
   RunDetails,
   RunStatusIndicator,
   CompetitorInsights,
+  ContentRecommendations,
+  AlertBanner,
+  useGeoAlerts,
+  QueryTypeRings,
+  ModelComparisonCard,
+  InsightsPanel,
+  useGeoInsights,
+  PositioningMatrix,
+  QueryPerformanceCards,
+  ReportBuilder,
   type QueryRow,
 } from '@/components/propertyaudit'
 import {
@@ -25,8 +35,13 @@ import {
   Play,
   Eye,
   Plus,
+  Trash2,
   Sparkles,
   Globe,
+  LayoutGrid,
+  List,
+  FileText,
+  Database,
 } from 'lucide-react'
 
 interface GeoScoreSummary {
@@ -64,6 +79,7 @@ interface GeoRun {
   status: 'queued' | 'running' | 'completed' | 'failed'
   queryCount: number
   startedAt: string
+  usesWebSearch?: boolean
   score: {
     overallScore: number
     visibilityPct: number
@@ -79,12 +95,19 @@ export default function PropertyAuditPage() {
   const [score, setScore] = useState<GeoScoreSummary | null>(null)
   const [queries, setQueries] = useState<QueryRow[]>([])
   const [runs, setRuns] = useState<GeoRun[]>([])
+  const [competitors, setCompetitors] = useState<Array<{ name: string; domain: string; mentionCount: number; avgRank: number }>>([])
   const [loading, setLoading] = useState(true)
   const [isRunning, setIsRunning] = useState(false)
   const [isGeneratingQueries, setIsGeneratingQueries] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'queries' | 'insights' | 'history'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'queries' | 'recommendations' | 'insights' | 'history'>('overview')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [queryView, setQueryView] = useState<'table' | 'cards'>('table')
+  const [showReportBuilder, setShowReportBuilder] = useState(false)
+
+  // Generate alerts and insights
+  const alerts = useGeoAlerts(score, runs, competitors)
+  const insights = useGeoInsights(score, queries, runs)
 
   useEffect(() => {
     if (currentProperty?.id) {
@@ -100,7 +123,8 @@ export default function PropertyAuditPage() {
       await Promise.all([
         fetchScore(),
         fetchQueries(),
-        fetchRuns()
+        fetchRuns(),
+        fetchCompetitors()
       ])
     } finally {
       setLoading(false)
@@ -128,6 +152,36 @@ export default function PropertyAuditPage() {
     const data = await res.json()
     if (res.ok) {
       setRuns(data.runs || [])
+    }
+  }
+
+  const purgeRunHistory = async () => {
+    if (!currentProperty?.id) return
+    if (!confirm('Delete ALL past GEO runs for this property? This cannot be undone.')) return
+
+    try {
+      const res = await fetch('/api/propertyaudit/runs/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId: currentProperty.id }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        console.error('Failed to purge runs:', data)
+        return
+      }
+      setSelectedRunId(null)
+      await fetchData()
+    } catch (err) {
+      console.error('Error purging run history:', err)
+    }
+  }
+
+  const fetchCompetitors = async () => {
+    const res = await fetch(`/api/propertyaudit/insights?propertyId=${currentProperty?.id}&surface=both`)
+    const data = await res.json()
+    if (res.ok) {
+      setCompetitors(data.competitors || [])
     }
   }
 
@@ -295,6 +349,14 @@ export default function PropertyAuditPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowReportBuilder(true)}
+            disabled={!runs.find(r => r.status === 'completed')}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            Generate Report
+          </button>
           <ExportMenu 
             runId={runs.find(r => r.status === 'completed')?.id || null}
           />
@@ -317,6 +379,14 @@ export default function PropertyAuditPage() {
         <RunStatusIndicator 
           propertyId={currentProperty.id}
           onRunCompleted={fetchData}
+        />
+      )}
+
+      {/* Alert Banners */}
+      {alerts.length > 0 && (
+        <AlertBanner 
+          alerts={alerts}
+          onDismiss={(id) => console.log('Dismissed alert:', id)}
         />
       )}
 
@@ -412,7 +482,7 @@ export default function PropertyAuditPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="flex gap-6">
-          {(['overview', 'queries', 'insights', 'history'] as const).map((tab) => (
+          {(['overview', 'queries', 'recommendations', 'insights', 'history'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -457,6 +527,32 @@ export default function PropertyAuditPage() {
               </div>
             ) : (
               <>
+                {/* Insights Panel */}
+                {insights.length > 0 && (
+                  <InsightsPanel
+                    insights={insights}
+                    onViewFullAnalysis={() => setActiveTab('recommendations')}
+                  />
+                )}
+
+                {/* Model Comparison + Query Type Rings */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Model Comparison */}
+                  <ModelComparisonCard
+                    openai={score?.surfaces.openai || null}
+                    claude={score?.surfaces.claude || null}
+                    onViewDetails={() => setActiveTab('insights')}
+                  />
+
+                  {/* Query Type Performance */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                      Performance by Query Type
+                    </h3>
+                    <QueryTypeRings queries={queries} />
+                  </div>
+                </div>
+
                 {/* Trend Chart */}
                 {trendData.length > 1 && (
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -476,8 +572,11 @@ export default function PropertyAuditPage() {
                     <div className="grid grid-cols-4 gap-4">
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-500">Position (45%)</span>
-                          <span className="text-sm font-medium">{Math.round(score.breakdown.position)}</span>
+                          <span className="text-xs text-gray-500">
+                            Position
+                            <span className="text-gray-400 ml-1">(45% weight)</span>
+                          </span>
+                          <span className="text-sm font-medium">{Math.round(score.breakdown.position)}/100</span>
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div 
@@ -488,8 +587,11 @@ export default function PropertyAuditPage() {
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-500">Link Rank (25%)</span>
-                          <span className="text-sm font-medium">{Math.round(score.breakdown.link)}</span>
+                          <span className="text-xs text-gray-500">
+                            Link Rank
+                            <span className="text-gray-400 ml-1">(25% weight)</span>
+                          </span>
+                          <span className="text-sm font-medium">{Math.round(score.breakdown.link)}/100</span>
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div 
@@ -500,8 +602,11 @@ export default function PropertyAuditPage() {
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-500">Share of Voice (20%)</span>
-                          <span className="text-sm font-medium">{Math.round(score.breakdown.sov)}</span>
+                          <span className="text-xs text-gray-500">
+                            Share of Voice
+                            <span className="text-gray-400 ml-1">(20% weight)</span>
+                          </span>
+                          <span className="text-sm font-medium">{Math.round(score.breakdown.sov)}/100</span>
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div 
@@ -512,8 +617,11 @@ export default function PropertyAuditPage() {
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-500">Accuracy (10%)</span>
-                          <span className="text-sm font-medium">{Math.round(score.breakdown.accuracy)}</span>
+                          <span className="text-xs text-gray-500">
+                            Accuracy
+                            <span className="text-gray-400 ml-1">(10% weight)</span>
+                          </span>
+                          <span className="text-sm font-medium">{Math.round(score.breakdown.accuracy)}/100</span>
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div 
@@ -538,6 +646,32 @@ export default function PropertyAuditPage() {
                 Query Panel
               </h3>
               <div className="flex items-center gap-2">
+                {/* View Toggle */}
+                <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg">
+                  <button
+                    onClick={() => setQueryView('table')}
+                    className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1 rounded-l-lg transition-colors ${
+                      queryView === 'table'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <List className="w-3 h-3" />
+                    Table
+                  </button>
+                  <button
+                    onClick={() => setQueryView('cards')}
+                    className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1 rounded-r-lg transition-colors ${
+                      queryView === 'cards'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3 h-3" />
+                    Cards
+                  </button>
+                </div>
+
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
@@ -556,20 +690,59 @@ export default function PropertyAuditPage() {
               </div>
             </div>
 
-            <QueryFilters queries={queries} />
+            {queryView === 'table' ? (
+              <>
+                <QueryFilters queries={queries} />
+                <QueryTable
+                  queries={queries}
+                  onDelete={handleDeleteQuery}
+                  onToggleActive={handleToggleActive}
+                  onBulkDelete={handleBulkDelete}
+                />
+              </>
+            ) : (
+              <QueryPerformanceCards
+                queries={queries.map(q => ({
+                  id: q.id,
+                  text: q.text,
+                  type: q.type,
+                  presence: q.presence || false,
+                  llmRank: q.llmRank || null,
+                  sov: q.sov || null,
+                  score: q.score || 0,
+                }))}
+                onViewAnswer={(id) => console.log('View answer:', id)}
+                onOptimizeQuery={(id) => setActiveTab('recommendations')}
+                onAddSimilar={(text) => setShowCreateModal(true)}
+              />
+            )}
+          </div>
+        )}
 
-            <QueryTable
-              queries={queries}
-              onDelete={handleDeleteQuery}
-              onToggleActive={handleToggleActive}
-              onBulkDelete={handleBulkDelete}
-            />
+        {/* Recommendations Tab */}
+        {activeTab === 'recommendations' && currentProperty?.id && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Content Recommendations
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Actionable suggestions based on your GEO performance
+                </p>
+              </div>
+            </div>
+            <ContentRecommendations propertyId={currentProperty.id} />
           </div>
         )}
 
         {/* Insights Tab */}
         {activeTab === 'insights' && currentProperty?.id && (
           <div className="space-y-6">
+            <PositioningMatrix 
+              queries={queries}
+              competitors={competitors}
+            />
             <CompetitorInsights propertyId={currentProperty.id} />
           </div>
         )}
@@ -577,6 +750,16 @@ export default function PropertyAuditPage() {
         {/* History Tab */}
         {activeTab === 'history' && (
           <div className="space-y-4">
+            <div className="flex items-center justify-end">
+              <button
+                onClick={purgeRunHistory}
+                disabled={runs.length === 0}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-red-200 dark:border-red-900/40 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear run history
+              </button>
+            </div>
             {runs.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500">
                 No runs yet. Click "Run Audit" to start tracking.
@@ -597,9 +780,17 @@ export default function PropertyAuditPage() {
                           <Globe className="w-5 h-5 text-purple-500" />
                         )}
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-white capitalize">
-                            {run.surface} Run
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-900 dark:text-white capitalize">
+                              {run.surface} Run
+                            </p>
+                            {run.usesWebSearch && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                                <Globe className="w-3 h-3" />
+                                Search
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500">
                             {new Date(run.startedAt).toLocaleString()} • {run.queryCount} queries
                           </p>
@@ -655,6 +846,14 @@ export default function PropertyAuditPage() {
         isOpen={selectedRunId !== null}
         onClose={() => setSelectedRunId(null)}
       />
+
+      <ReportBuilder
+        isOpen={showReportBuilder}
+        onClose={() => setShowReportBuilder(false)}
+        propertyId={currentProperty?.id || ''}
+        propertyName={currentProperty?.name || 'Property'}
+      />
     </div>
   )
 }
+

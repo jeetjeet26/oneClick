@@ -225,3 +225,4 @@ export function TrendChart({ points, height = 180 }: TrendChartProps) {
     </div>
   )
 }
+

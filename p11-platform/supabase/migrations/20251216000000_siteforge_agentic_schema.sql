@@ -392,3 +392,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON website_assets TO authenticated;
 GRANT SELECT ON siteforge_jobs TO authenticated;
 GRANT SELECT ON siteforge_blueprint_versions TO authenticated;
 
+

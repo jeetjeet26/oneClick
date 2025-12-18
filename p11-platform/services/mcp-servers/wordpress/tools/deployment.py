@@ -439,3 +439,4 @@ def generate_secure_password(length: int = 24) -> str:
     chars = string.ascii_letters + string.digits + '!@#$%^&*'
     return ''.join(secrets.choice(chars) for _ in range(length))
 
+

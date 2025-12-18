@@ -159,3 +159,4 @@ function calculateCombinedScore(
     visibilityPct: Math.round(avgVisibility * 10) / 10,
   }
 }
+

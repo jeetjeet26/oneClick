@@ -56,15 +56,30 @@ function findBrandEntityRank(answer: AnswerBlock, context: EvaluationContext): n
   for (const entity of answer.ordered_entities) {
     const entityDomain = normalizeDomain(entity.domain)
     const entityName = entity.name.toLowerCase()
+    const brandNameLower = context.brandName.toLowerCase()
     
     // Check if entity domain matches brand domains
-    if (isBrandDomain(entityDomain, context.brandDomains)) {
+    if (context.brandDomains.length > 0 && isBrandDomain(entityDomain, context.brandDomains)) {
       return entity.position ?? null
     }
     
-    // Check if entity name contains brand name
-    if (entityName.includes(context.brandName.toLowerCase())) {
+    // Check if entity name contains brand name (exact match)
+    if (entityName.includes(brandNameLower)) {
       return entity.position ?? null
+    }
+    
+    // Check for partial brand name match (e.g., "AMLI Aero" matches "AMLI Residential")
+    // Split brand name into words and check if main identifier matches
+    const brandWords = brandNameLower.split(/\s+/).filter(w => w.length > 3)
+    if (brandWords.length > 0) {
+      const mainBrand = brandWords[0] // e.g., "amli" from "AMLI Aero"
+      if (entityName.includes(mainBrand) && mainBrand.length >= 4) {
+        // Verify it's not a generic word like "apartments"
+        const genericWords = ['apartments', 'apartment', 'properties', 'property', 'living', 'homes']
+        if (!genericWords.includes(mainBrand)) {
+          return entity.position ?? null
+        }
+      }
     }
   }
   return null
@@ -300,3 +315,4 @@ export function getScoreBgColor(bucket: ScoreBucket): string {
       return 'bg-red-100'
   }
 }
+

@@ -124,7 +124,9 @@ export function QueryFilters({ queries, onFilteredChange }: QueryFiltersProps) {
     { value: 'all', label: 'All' },
     ...uniqueTypes.map((type) => ({ 
       value: type, 
-      label: type.charAt(0).toUpperCase() + type.slice(1) 
+      label: type === 'voice_search' 
+        ? 'Voice Search' 
+        : type.charAt(0).toUpperCase() + type.slice(1) 
     }))
   ]
 
@@ -215,3 +217,4 @@ export function QueryFilters({ queries, onFilteredChange }: QueryFiltersProps) {
     </div>
   )
 }
+

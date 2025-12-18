@@ -298,3 +298,4 @@ Style requirements:
 - No text, watermarks, or logos
 - Magazine-quality color grading`
 }
+

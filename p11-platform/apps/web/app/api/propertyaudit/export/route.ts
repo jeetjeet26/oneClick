@@ -113,12 +113,21 @@ function generateMarkdown(run: any, property: any, score: any, answers: any[]): 
     lines.push(`- **LLM Rank:** ${answer.llm_rank ?? 'N/A'}`)
     lines.push(`- **Link Rank:** ${answer.link_rank ?? 'N/A'}`)
     lines.push(`- **SOV:** ${answer.sov ? (answer.sov * 100).toFixed(1) + '%' : 'N/A'}`)
+    if (answer.analysis_method) {
+      lines.push(`- **Analysis Method:** ${answer.analysis_method}`)
+    }
     
     if (answer.flags && answer.flags.length > 0) {
       lines.push(`- **Flags:** ${answer.flags.join(', ')}`)
     }
     
     lines.push(``)
+    if (answer.natural_response) {
+      lines.push(`**Natural Response (What Users See):**`)
+      lines.push(``)
+      lines.push(answer.natural_response)
+      lines.push(``)
+    }
     lines.push(`**Answer:** ${answer.answer_summary}`)
     lines.push(``)
     
@@ -199,6 +208,11 @@ function generateHTML(run: any, property: any, score: any, answers: any[]): stri
     <div class="query-card">
       <h3>${idx + 1}. ${query?.text}</h3>
       <p><strong>Type:</strong> ${query?.type} | <strong>Presence:</strong> ${answer.presence ? '✓' : '✗'} | <strong>LLM Rank:</strong> ${answer.llm_rank ?? 'N/A'}</p>
+      ${answer.analysis_method ? `<p><strong>Analysis method:</strong> ${answer.analysis_method}</p>` : ''}
+      ${answer.natural_response ? `
+        <h4>Natural Response (What Users See):</h4>
+        <div class="entity" style="white-space: pre-wrap;">${escapeHtml(answer.natural_response)}</div>
+      ` : ''}
       <p>${answer.answer_summary}</p>
       
       ${answer.ordered_entities && answer.ordered_entities.length > 0 ? `
@@ -230,3 +244,13 @@ function generateHTML(run: any, property: any, score: any, answers: any[]): stri
 </html>
   `.trim()
 }
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+

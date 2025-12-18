@@ -1,25 +1,13 @@
 ---
 name: PropertyAudit vs WebFX Analysis
-overview: Comprehensive analysis of PropertyAudit's current capabilities vs WebFX's OmniSEO offering, identifying gaps and creating a roadmap to integrate GEO insights with P11's autonomous marketing agents for actionable optimization.
+overview: Comprehensive analysis of PropertyAudit's current capabilities vs WebFX's OmniSEO offering, identifying gaps and creating a roadmap to enhance GEO insights with recommendations engine and voice search capabilities.
 todos:
   - id: recommendations-engine
     content: Build recommendation engine that analyzes GEO gaps and generates content suggestions
-    status: pending
-  - id: siteforge-integration
-    content: Connect PropertyAudit recommendations to SiteForge ContentAgent for auto-execution
-    status: pending
-  - id: google-aio
-    content: Add Google AI Overviews tracking via SerpAPI
-    status: pending
+    status: completed
   - id: voice-search
     content: Add voice search query types and question-based tracking
-    status: pending
-  - id: social-search
-    content: Integrate social platform search visibility (TikTok, Instagram)
-    status: pending
-  - id: traffic-impact
-    content: Build traffic impact prediction using GA4 and BI data
-    status: pending
+    status: completed
 ---
 
 # PropertyAudit vs WebFX OmniSEO - Gap Analysis & Enhancement Roadmap
@@ -146,7 +134,7 @@ flowchart TB
 
 ## Enhancement Roadmap
 
-### Phase 1: Content Recommendations Engine (High Priority)
+### ✅ Phase 1: Content Recommendations Engine (In Scope - High Priority)
 
 **Goal:** Turn GEO insights into actionable content suggestions
 
@@ -168,69 +156,76 @@ Analyzes GEO results and generates:
   - Competitor analysis
   - Expected visibility impact
 
-### Phase 2: SiteForge Integration (High Priority)
+**Note:** Recommendations will be **manual action items** (export/copy functionality). No automated execution in this phase.
 
-**Goal:** Automatically update website content based on GEO insights
+### ✅ Phase 2: Voice Search Queries (In Scope - High Priority)
 
-**Flow:**
+**Goal:** Expand beyond text LLMs to voice and conversational search
 
-1. PropertyAudit detects low visibility for "luxury apartments [city]"
-2. Generates recommendation: "Add amenity page targeting luxury keywords"
-3. **NEW:** Button to "Generate Page in SiteForge"
-4. SiteForge ContentAgent creates optimized page
-5. Next GEO run validates improvement
-
-**Files to create:**
-
-- `app/api/propertyaudit/execute-recommendation/route.ts`
-- `utils/propertyaudit/recommendation-engine.ts`
-
-**Integration points:**
-
-- Call SiteForgeOrchestrator with GEO-optimized prompts
-- Use ContentAgent to refine existing pages
-- Track before/after GEO scores
-
-### Phase 3: Google AI Overviews Tracking (Medium Priority)
-
-**Goal:** Track presence in Google's AI-powered search features
-
-**Implementation:**
-
-- Add `google-aio` surface type (alongside openai/claude)
-- Use Google Search API or SerpAPI to capture AI Overview snippets
-- Track featured snippet appearances
-- Compare traditional SEO vs GEO performance
-
-**Schema update:** Add `google-aio` to `geo_surface_enum`
-
-### Phase 4: Voice & Social Search (Medium Priority)
-
-**Goal:** Expand beyond text LLMs to voice and social platforms
-
-**Voice Search:**
+**Voice Search Implementation:**
 
 - Add voice-optimized queries (question format)
-- Track Google Assistant / Alexa responses
-- Measure voice search keywords
+- New query types: "How do I...", "What is the best...", "Where can I find..."
+- Track question-based keywords in LLM responses
+- Measure conversational query performance
 
-**Social Search:**
+**Files to Update:**
+
+- `utils/propertyaudit/types.ts` - Add voice query type
+- Query generation logic - Add question templates
+
+---
+
+## 📦 Deferred Features (Linear Backlog)
+
+The following features have been moved to Linear backlog for future consideration:
+
+### [P11-96] Google AI Overviews Tracking
+
+**Priority:** Medium
+
+**Why Deferred:** Focus on OpenAI/Claude GEO first
+
+**Link:** https://linear.app/p11creative/issue/P11-96
+
+- Add `google-aio` surface type
+- SerpAPI integration for Google Search visibility
+- Featured snippet tracking
+
+### [P11-97] SiteForge Integration for Auto-Execution
+
+**Priority:** Low
+
+**Why Deferred:** SiteForge ContentAgent is website-specific, needs architecture design
+
+**Link:** https://linear.app/p11creative/issue/P11-97
+
+- Connect recommendations to automated content updates
+- Requires general-purpose content generation strategy
+
+### [P11-98] Social Search Integration
+
+**Priority:** Low
+
+**Why Deferred:** Text LLMs are higher priority than social platforms
+
+**Link:** https://linear.app/p11creative/issue/P11-98
 
 - TikTok search visibility
 - Instagram search results
 - Pinterest recommendations
-- Leverage ForgeStudio's social content performance
 
-### Phase 5: Traffic Impact Prediction (Low Priority)
+### [P11-99] Traffic Impact Prediction
 
-**Goal:** Forecast traffic shifts from AI search adoption
+**Priority:** Low
 
-**Approach:**
+**Why Deferred:** GEO visibility is actionable on its own
 
-- Integrate with Google Analytics data
-- Calculate % of traffic from search queries
-- Project impact of AI visibility changes
-- Use historical BI data from MultiChannel BI
+**Link:** https://linear.app/p11creative/issue/P11-99
+
+- GA4 integration
+- Traffic forecasting
+- ROI calculation
 
 ---
 
@@ -312,46 +307,31 @@ flowchart LR
 
 ## Recommended Next Steps
 
-### Immediate (Week 1)
+### ✅ Immediate Implementation (This Sprint)
 
-1. **Add Recommendations Engine**
+1. **Build Recommendations Engine**
 
-   - Analyze GEO gaps
-   - Generate content suggestions
-   - Prioritize by traffic impact
+   - Analyze GEO run results
+   - Identify missing keyword opportunities
+   - Generate content gap analysis
+   - Prioritize by competitive impact
+   - Export functionality for manual action
 
-2. **Connect to SiteForge**
+2. **Add Voice Search Queries**
 
-   - "Generate optimized page" button
-   - Pass GEO insights to ContentAgent
-   - Measure before/after
+   - Add question-based query templates
+   - New query type: `voice_search`
+   - Track conversational keyword performance
+   - Measure question-format responses
 
-### Short-term (Week 2-3)
+### 📦 Future Enhancements (Linear Backlog)
 
-3. **Add Google AI Overviews**
+All other enhancements have been documented as Linear issues for future prioritization:
 
-   - New surface type
-   - SerpAPI integration
-   - Featured snippet tracking
-
-4. **Voice Search Queries**
-
-   - Question-based query type
-   - Voice assistant tracking
-
-### Medium-term (Month 2)
-
-5. **Social Search Integration**
-
-   - TikTok search visibility
-   - Instagram hashtag presence
-   - Connect to ForgeStudio
-
-6. **Traffic Impact Dashboard**
-
-   - GA4 integration
-   - Search traffic forecasting
-   - ROI calculation
+- **P11-96**: Google AI Overviews tracking
+- **P11-97**: SiteForge integration for auto-execution
+- **P11-98**: Social search integration (TikTok, Instagram)
+- **P11-99**: Traffic impact prediction (GA4 integration)
 
 ---
 
@@ -378,28 +358,20 @@ This creates a **self-improving AI visibility loop** that WebFX can't match.
 
 ---
 
-## Files Needed for Full WebFX Parity
+## Files Needed for Implementation
 
 ### Recommendations Engine
 
-- `utils/propertyaudit/recommendation-engine.ts` - Core logic
-- `components/propertyaudit/recommendations/ContentRecommendations.tsx` - UI
-- `app/api/propertyaudit/recommendations/route.ts` - API
+- `utils/propertyaudit/recommendation-engine.ts` - Core analysis logic
+- `components/propertyaudit/recommendations/ContentRecommendations.tsx` - UI component
+- `components/propertyaudit/recommendations/index.ts` - Exports
+- `app/api/propertyaudit/recommendations/route.ts` - API endpoint
 
-### SiteForge Integration
+### Voice Search Queries
 
-- `app/api/propertyaudit/execute-recommendation/route.ts` - Trigger content generation
-- Update `SiteForgeOrchestrator` to accept GEO context
-
-### Google AI Overviews
-
-- `utils/propertyaudit/google-aio-connector.ts` - SerpAPI integration
-- Update schema: Add `google-aio` to `geo_surface_enum`
-
-### Voice Search
-
-- Add voice query templates to query generation
-- Track question-based keywords
+- Update `utils/propertyaudit/types.ts` - Add `voice_search` query type
+- Update query generation logic - Add question-based templates
+- Update UI components - Display voice query results
 
 ---
 
@@ -407,8 +379,16 @@ This creates a **self-improving AI visibility loop** that WebFX can't match.
 
 **Current State:** PropertyAudit = 70% of WebFX OmniSEO (tracking & analysis)
 
-**Missing:** Content recommendations, execution automation, voice/social search
+**This Sprint:**
 
-**P11 Advantage:** Can automatically execute recommendations through existing agents
+- ✅ Build Recommendations Engine (manual action items)
+- ✅ Add Voice Search query types
 
-**Next Priority:** Build the Recommendations Engine + SiteForge connection to complete the autonomous loop.
+**Deferred to Backlog:**
+
+- 📦 Google AI Overviews tracking (P11-96)
+- 📦 SiteForge integration / auto-execution (P11-97)
+- 📦 Social search integration (P11-98)
+- 📦 Traffic impact prediction (P11-99)
+
+**Key Decision:** Focus on actionable recommendations first, defer automation/execution to future phases when architecture is better defined.

@@ -37,3 +37,4 @@ def get_template_credentials() -> dict:
         'password': TEMPLATE_WP_PASSWORD
     }
 
+

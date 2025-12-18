@@ -28,6 +28,8 @@ interface Answer {
   sov: number | null
   flags: string[]
   answerSummary: string
+  naturalResponse?: string | null
+  analysisMethod?: string | null
   orderedEntities: AnswerEntity[]
   citations: AnswerCitation[]
   rawResponse?: any
@@ -212,10 +214,59 @@ export function AnswerPreview({
               {/* Full LLM Response */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Full LLM Response
+                  {answer.naturalResponse ? 'Natural LLM Response (What Users See)' : 'Full LLM Response'}
                 </h3>
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-                  {answer.rawResponse ? (
+                  {answer.naturalResponse ? (
+                    <div className="space-y-3">
+                      {answer.analysisMethod && (
+                        <div className="text-xs text-gray-500">
+                          Method: <span className="font-medium">{answer.analysisMethod}</span>
+                        </div>
+                      )}
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">
+                        {answer.naturalResponse}
+                      </p>
+
+                      {/* Extracted Analysis */}
+                      {answer.rawResponse?.analysis && (
+                        <details className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
+                          <summary className="cursor-pointer text-xs font-medium text-gray-700 dark:text-gray-300">
+                            Extracted Analysis (click to expand)
+                          </summary>
+                          <div className="mt-3 space-y-2">
+                            {answer.rawResponse?.analysis?.brand_analysis && (
+                              <div className="text-sm text-gray-700 dark:text-gray-300">
+                                <div className="font-medium text-gray-900 dark:text-white">Brand Analysis</div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 space-y-0.5">
+                                  <div>Mentioned: {String(answer.rawResponse.analysis.brand_analysis.mentioned)}</div>
+                                  <div>Position: {answer.rawResponse.analysis.brand_analysis.position ?? '—'}</div>
+                                  <div>Location stated: {answer.rawResponse.analysis.brand_analysis.location_stated ?? '—'}</div>
+                                  <div>Location correct: {String(answer.rawResponse.analysis.brand_analysis.location_correct)}</div>
+                                  <div>Prominence: {answer.rawResponse.analysis.brand_analysis.prominence ?? '—'}</div>
+                                </div>
+                              </div>
+                            )}
+
+                            {typeof answer.rawResponse?.analysis?.extraction_confidence === 'number' && (
+                              <div className="text-xs text-gray-600 dark:text-gray-400">
+                                Extraction confidence: <span className="font-medium">{answer.rawResponse.analysis.extraction_confidence}%</span>
+                              </div>
+                            )}
+
+                            <details className="cursor-pointer">
+                              <summary className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                                View full extracted JSON
+                              </summary>
+                              <pre className="mt-2 text-xs text-gray-600 dark:text-gray-400 overflow-x-auto bg-white dark:bg-gray-950 p-3 rounded">
+                                {JSON.stringify(answer.rawResponse.analysis, null, 2)}
+                              </pre>
+                            </details>
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ) : answer.rawResponse ? (
                     <div className="space-y-3">
                       {/* Try to extract text content from raw response */}
                       {typeof answer.rawResponse === 'object' && answer.rawResponse?.choices?.[0]?.message?.content ? (
@@ -331,3 +382,4 @@ export function AnswerPreview({
     </div>
   )
 }
+

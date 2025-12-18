@@ -19,7 +19,7 @@ import { ScoreBreakdown } from '../score'
 export interface QueryRow {
   id: string
   text: string
-  type: 'branded' | 'category' | 'comparison' | 'local' | 'faq'
+  type: 'branded' | 'category' | 'comparison' | 'local' | 'faq' | 'voice_search'
   geo: string | null
   weight: number
   isActive: boolean
@@ -63,6 +63,11 @@ const TYPE_COLORS: Record<string, string> = {
   comparison: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
   local: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   faq: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+  voice_search: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+}
+
+const formatTypeLabel = (type: string): string => {
+  return type === 'voice_search' ? 'Voice Search' : type.charAt(0).toUpperCase() + type.slice(1)
 }
 
 export function QueryTable({
@@ -241,7 +246,7 @@ export function QueryTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800 text-left">
             <tr>
@@ -272,7 +277,7 @@ export function QueryTable({
               <th className="px-3 py-3 text-right">
                 <button 
                   onClick={() => toggleSort('presence')}
-                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase"
+                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase ml-auto"
                 >
                   Presence <SortIcon columnKey="presence" />
                 </button>
@@ -280,7 +285,7 @@ export function QueryTable({
               <th className="px-3 py-3 text-right">
                 <button 
                   onClick={() => toggleSort('llmRank')}
-                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase"
+                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase ml-auto"
                 >
                   LLM Rank <SortIcon columnKey="llmRank" />
                 </button>
@@ -288,7 +293,7 @@ export function QueryTable({
               <th className="px-3 py-3 text-right">
                 <button 
                   onClick={() => toggleSort('score')}
-                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase"
+                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase ml-auto"
                 >
                   Score <SortIcon columnKey="score" />
                 </button>
@@ -296,7 +301,7 @@ export function QueryTable({
               <th className="px-3 py-3 text-right">
                 <button 
                   onClick={() => toggleSort('delta')}
-                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase"
+                  className="flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase ml-auto"
                 >
                   Δ <SortIcon columnKey="delta" />
                 </button>
@@ -344,18 +349,18 @@ export function QueryTable({
                           {query.text}
                         </p>
                         {query.geo && (
-                          <p className="text-xs text-gray-500 mt-0.5">{query.geo}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{query.geo}</p>
                         )}
                       </div>
                     </td>
                     <td className="px-3 py-3">
                       <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${TYPE_COLORS[query.type]}`}>
-                        {query.type}
+                        {formatTypeLabel(query.type)}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <span className={`inline-flex items-center gap-1 ${query.presence ? 'text-green-600' : 'text-gray-400'}`}>
-                        <span className={`h-2 w-2 rounded-full ${query.presence ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <span className={`inline-flex items-center gap-1 ${query.presence ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                        <span className={`h-2 w-2 rounded-full ${query.presence ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
                         {query.presence ? 'Yes' : 'No'}
                       </span>
                     </td>
@@ -368,7 +373,7 @@ export function QueryTable({
                       {query.score !== undefined && query.breakdown ? (
                         <ScoreBreakdown score={query.score} breakdown={query.breakdown} compact />
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-gray-400 dark:text-gray-500">—</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-right">
@@ -396,7 +401,7 @@ export function QueryTable({
                           onClick={() => setShowActions(showActions === query.id ? null : query.id)}
                           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
-                          <MoreHorizontal className="w-4 h-4 text-gray-500" />
+                          <MoreHorizontal className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                         </button>
                         {showActions === query.id && (
                           <div className="absolute right-0 z-10 mt-1 w-36 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
@@ -439,7 +444,7 @@ export function QueryTable({
         </table>
 
         {queries.length === 0 && (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
             No queries found. Generate a query panel to get started.
           </div>
         )}
@@ -447,3 +452,4 @@ export function QueryTable({
     </div>
   )
 }
+

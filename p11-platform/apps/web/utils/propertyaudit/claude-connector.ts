@@ -12,35 +12,61 @@ import {
   type ConnectorResult,
   getGeoConfig 
 } from './types'
+import { performWebSearch, formatSearchResultsForLLM } from './web-search'
 
 function buildPrompt(context: ConnectorContext): string {
   const domains = context.brandDomains.join(', ')
   const competitors = context.competitors.join(', ')
-  return [
-    `Task: Perform a GEO audit for the following query and return ONLY valid JSON matching the exact schema.`,
-    `Query: ${context.queryText}`,
-    `Brand: ${context.brandName}`,
-    `Brand domains: ${domains || '—'}`,
-    `Competitors: ${competitors || '—'}`,
-    ``,
-    `Requirements:`,
-    `- Produce an ordered list of providers/brands relevant to the query (name, domain, rationale, position starting at 1).`,
-    `- Include citations with absolute URLs and their domains.`,
-    `- Summarize the answer in 1-2 sentences.`,
-    `- If no grounded sources are available, set notes.flags to include "no_sources".`,
-    ``,
-    `Output format - Return ONLY raw JSON (no markdown code blocks, no explanations, no text before or after):`,
-    `{`,
-    `  "ordered_entities": [`,
-    `    {"name": "...", "domain": "...", "rationale": "...", "position": 1}`,
-    `  ],`,
-    `  "citations": [`,
-    `    {"url": "...", "domain": "...", "entity_ref": "1"}`,
-    `  ],`,
-    `  "answer_summary": "...",`,
-    `  "notes": {"flags": []}`,
-    `}`
-  ].join('\n')
+  const location = context.propertyLocation
+  
+  const lines = [
+    `Task: Perform a GEO audit for this specific apartment property and return ONLY valid JSON matching the exact schema.`,
+  ]
+
+  // Add property location context if available (prevents hallucinations)
+  if (location && location.city && location.state) {
+    lines.push(``)
+    lines.push(`Property Details:`)
+    lines.push(`- Name: ${context.brandName}`)
+    lines.push(`- Location: ${location.city}, ${location.state}`)
+    if (location.fullAddress) {
+      lines.push(`- Address: ${location.fullAddress}`)
+    }
+    if (location.websiteUrl) {
+      lines.push(`- Official Website: ${location.websiteUrl}`)
+    }
+    lines.push(``)
+    lines.push(`CRITICAL: This property is located in ${location.city}, ${location.state}.`)
+    lines.push(`Do NOT confuse with other AMLI properties in different cities (e.g., Denver, Austin, Chicago).`)
+    lines.push(`All information must be specific to the ${location.city}, ${location.state} location.`)
+    lines.push(`If you cite URLs, ensure they reference the ${location.city} property, not other locations.`)
+  }
+
+  lines.push(``)
+  lines.push(`Query: ${context.queryText}`)
+  lines.push(`Brand: ${context.brandName}`)
+  lines.push(`Brand domains: ${domains || '—'}`)
+  lines.push(`Competitors: ${competitors || '—'}`)
+  lines.push(``)
+  lines.push(`Requirements:`)
+  lines.push(`- Produce an ordered list of providers/brands relevant to the query (name, domain, rationale, position starting at 1).`)
+  lines.push(`- Include citations with absolute URLs and their domains.`)
+  lines.push(`- Summarize the answer in 1-2 sentences.`)
+  lines.push(`- If no grounded sources are available, set notes.flags to include "no_sources".`)
+  lines.push(``)
+  lines.push(`Output format - Return ONLY raw JSON (no markdown code blocks, no explanations, no text before or after):`)
+  lines.push(`{`)
+  lines.push(`  "ordered_entities": [`)
+  lines.push(`    {"name": "...", "domain": "...", "rationale": "...", "position": 1}`)
+  lines.push(`  ],`)
+  lines.push(`  "citations": [`)
+  lines.push(`    {"url": "...", "domain": "...", "entity_ref": "1"}`)
+  lines.push(`  ],`)
+  lines.push(`  "answer_summary": "...",`)
+  lines.push(`  "notes": {"flags": []}`)
+  lines.push(`}`)
+  
+  return lines.join('\n')
 }
 
 function tryParseJson(content: string): unknown {
@@ -187,41 +213,129 @@ export class ClaudeConnector implements Connector {
 
   async invoke(context: ConnectorContext): Promise<ConnectorResult> {
     const config = getGeoConfig()
-    const client = new Anthropic({ apiKey: config.anthropicApiKey })
+    const client = new Anthropic({ 
+      apiKey: config.anthropicApiKey,
+      timeout: 600000, // 10 minutes timeout for slow API responses
+    })
     const prompt = buildPrompt(context)
+    const enableWebSearch = process.env.GEO_ENABLE_WEB_SEARCH === 'true'
 
     console.log('[claude] Query:', context.queryText)
     console.log('[claude] Brand:', context.brandName)
+    if (enableWebSearch) {
+      console.log('[claude] Web search: enabled')
+    }
 
     let raw: unknown = null
     let parsed: AnswerBlock | null = null
+    const messages: Anthropic.MessageParam[] = [
+      {
+        role: 'user',
+        content: prompt
+      }
+    ]
 
     try {
-      const response = await client.messages.create({
+      // First call - with web search tool if enabled
+      const firstResponse = await client.messages.create({
         model: config.claudeModel,
-        max_tokens: 1200,
+        max_tokens: 2000,
         temperature: config.temperature,
-        system: 'You are a precise GEO audit assistant. You must output ONLY valid JSON without any markdown formatting, code blocks, or explanatory text. Return raw JSON that can be directly parsed.',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
+        system: enableWebSearch
+          ? 'You are a precise GEO audit assistant. Use web search to find current, accurate information about apartment properties. After searching, output strict JSON only.'
+          : 'You are a precise GEO audit assistant. You must output ONLY valid JSON without any markdown formatting, code blocks, or explanatory text. Return raw JSON that can be directly parsed.',
+        messages,
+        ...(enableWebSearch ? {
+          tools: [
+            {
+              name: 'web_search',
+              description: 'Search the web for current information about apartment properties, reviews, listings, and competitive analysis',
+              input_schema: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'The search query to execute'
+                  }
+                },
+                required: ['query']
+              }
+            }
+          ]
+        } : {})
       })
 
-      raw = response
+      raw = firstResponse
 
-      const textBlocks = (response.content ?? []).filter(
-        (b): b is Anthropic.TextBlock => b.type === 'text'
+      // Check if Claude wants to use web search
+      const toolUseBlock = firstResponse.content.find(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
       )
-      const contentText = textBlocks.map(b => b.text).join('\n')
 
-      const jsonValue = tryParseJson(contentText)
-      if (jsonValue) {
-        parsed = coerceToAnswerBlock(jsonValue)
-        if (parsed) {
-          console.log('[claude] ✓ Parsed', parsed.ordered_entities.length, 'entities,', parsed.citations.length, 'citations')
+      if (toolUseBlock && toolUseBlock.name === 'web_search') {
+        console.log('[claude] Tool use requested:', toolUseBlock.input)
+        
+        // Execute web search
+        const searchQuery = (toolUseBlock.input as any).query || context.queryText
+        const searchResults = await performWebSearch(searchQuery)
+        const formattedResults = formatSearchResultsForLLM(searchResults)
+
+        console.log('[claude] Search completed, ${searchResults.results.length} results')
+
+        // Send search results back to Claude
+        messages.push({
+          role: 'assistant',
+          content: firstResponse.content
+        })
+        messages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: toolUseBlock.id,
+              content: formattedResults
+            },
+            {
+              type: 'text',
+              text: 'Based on these search results, provide your answer in the required JSON format with ordered_entities and citations.'
+            }
+          ]
+        })
+
+        // Second call - get structured response
+        const secondResponse = await client.messages.create({
+          model: config.claudeModel,
+          max_tokens: 1200,
+          temperature: config.temperature,
+          system: 'You are a precise GEO audit assistant. Output ONLY valid JSON without any markdown formatting. Return raw JSON that can be directly parsed.',
+          messages
+        })
+
+        const textBlocks = (secondResponse.content ?? []).filter(
+          (b): b is Anthropic.TextBlock => b.type === 'text'
+        )
+        const contentText = textBlocks.map(b => b.text).join('\n')
+
+        const jsonValue = tryParseJson(contentText)
+        if (jsonValue) {
+          parsed = coerceToAnswerBlock(jsonValue)
+          if (parsed) {
+            console.log('[claude] ✓ Parsed', parsed.ordered_entities.length, 'entities,', parsed.citations.length, 'citations (with search)')
+          }
+        }
+      } else {
+        // No tool use - direct response
+        const textBlocks = (firstResponse.content ?? []).filter(
+          (b): b is Anthropic.TextBlock => b.type === 'text'
+        )
+        const contentText = textBlocks.map(b => b.text).join('\n')
+
+        const jsonValue = tryParseJson(contentText)
+        if (jsonValue) {
+          parsed = coerceToAnswerBlock(jsonValue)
+          if (parsed) {
+            console.log('[claude] ✓ Parsed', parsed.ordered_entities.length, 'entities,', parsed.citations.length, 'citations')
+          }
         }
       }
     } catch (error) {
@@ -245,3 +359,4 @@ export class ClaudeConnector implements Connector {
     return { answer: parsed, raw }
   }
 }
+

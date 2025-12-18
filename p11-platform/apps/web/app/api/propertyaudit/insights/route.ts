@@ -71,11 +71,17 @@ export async function GET(req: NextRequest) {
         // Process entities
         if (answer.ordered_entities && Array.isArray(answer.ordered_entities)) {
           answer.ordered_entities.forEach((entity: any) => {
-            const key = entity.domain
+            // Use domain if available, otherwise use entity name as key
+            // This prevents grouping all entities with empty domains together
+            const domain = entity.domain && entity.domain.trim() !== '' 
+              ? entity.domain 
+              : null
+            const key = domain || `name:${entity.name}`
+            
             if (!competitorMap.has(key)) {
               competitorMap.set(key, {
                 name: entity.name,
-                domain: entity.domain,
+                domain: domain || 'unknown',
                 mentions: [],
                 citationCount: 0
               })
@@ -133,6 +139,11 @@ export async function GET(req: NextRequest) {
         return b.count - a.count
       })
 
+    // Calculate brand Share of Voice
+    const totalCitations = domains.reduce((sum, d) => sum + d.count, 0)
+    const brandCitations = domains.filter(d => d.isBrandDomain).reduce((sum, d) => sum + d.count, 0)
+    const brandSOV = totalCitations > 0 ? (brandCitations / totalCitations) * 100 : 0
+
     return NextResponse.json({
       competitors,
       domains,
@@ -147,3 +158,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+

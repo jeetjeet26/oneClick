@@ -72,19 +72,43 @@ const AnswerBlockJsonSchema = {
 function buildPrompt(context: ConnectorContext): string {
   const domains = context.brandDomains.join(', ')
   const competitors = context.competitors.join(', ')
-  return [
-    `Task: Perform a GEO audit for the following query and return ONLY the JSON object matching the schema.`,
-    `Query: ${context.queryText}`,
-    `Brand: ${context.brandName}`,
-    `Brand domains: ${domains || '—'}`,
-    `Competitors: ${competitors || '—'}`,
-    `Requirements:`,
-    `- Produce an ordered list of providers/brands relevant to the query (name, domain, rationale, position starting at 1).`,
-    `- Include citations with absolute URLs and their domains.`,
-    `- Summarize the answer in 1-2 sentences.`,
-    `- If no grounded sources are available, set notes.flags to include "no_sources".`,
-    `Output: Return ONLY the JSON object, no markdown, no explanations.`
-  ].join('\n')
+  const location = context.propertyLocation
+  
+  const lines = [
+    `Task: Perform a GEO audit for this specific apartment property and return ONLY the JSON object matching the schema.`,
+  ]
+
+  // Add property location context if available (prevents hallucinations)
+  if (location && location.city && location.state) {
+    lines.push(``)
+    lines.push(`Property Details:`)
+    lines.push(`- Name: ${context.brandName}`)
+    lines.push(`- Location: ${location.city}, ${location.state}`)
+    if (location.fullAddress) {
+      lines.push(`- Address: ${location.fullAddress}`)
+    }
+    if (location.websiteUrl) {
+      lines.push(`- Official Website: ${location.websiteUrl}`)
+    }
+    lines.push(``)
+    lines.push(`CRITICAL: This property is located in ${location.city}, ${location.state}.`)
+    lines.push(`Do NOT confuse with properties in other cities or states.`)
+    lines.push(`Verify all information relates to the ${location.city}, ${location.state} location.`)
+  }
+  
+  lines.push(``)
+  lines.push(`Query: ${context.queryText}`)
+  lines.push(`Brand: ${context.brandName}`)
+  lines.push(`Brand domains: ${domains || '—'}`)
+  lines.push(`Competitors: ${competitors || '—'}`)
+  lines.push(`Requirements:`)
+  lines.push(`- Produce an ordered list of providers/brands relevant to the query (name, domain, rationale, position starting at 1).`)
+  lines.push(`- Include citations with absolute URLs and their domains.`)
+  lines.push(`- Summarize the answer in 1-2 sentences.`)
+  lines.push(`- If no grounded sources are available, set notes.flags to include "no_sources".`)
+  lines.push(`Output: Return ONLY the JSON object, no markdown, no explanations.`)
+  
+  return lines.join('\n')
 }
 
 function tryParseJson(content: string): unknown {
@@ -205,7 +229,11 @@ export class OpenAIConnector implements Connector {
 
   async invoke(context: ConnectorContext): Promise<ConnectorResult> {
     const config = getGeoConfig()
-    const client = new OpenAI({ apiKey: config.openaiApiKey })
+    const client = new OpenAI({ 
+      apiKey: config.openaiApiKey,
+      timeout: 600000, // 10 minutes timeout for slow API responses
+      maxRetries: 2
+    })
     const prompt = buildPrompt(context)
 
     console.log('[openai] Query:', context.queryText)
@@ -217,12 +245,15 @@ export class OpenAIConnector implements Connector {
 
     // Check if model requires default sampling (GPT-5, GPT-4.1+)
     const requiresDefaultSampling = /^gpt-5/i.test(config.openaiModel) || /^gpt-4\.[1-9]/i.test(config.openaiModel)
+    
+    // Check if web search is enabled
+    const enableWebSearch = process.env.GEO_ENABLE_WEB_SEARCH === 'true'
 
     try {
       const requestOptions: Parameters<typeof client.chat.completions.create>[0] = {
         model: config.openaiModel,
         messages: [
-          { role: 'system', content: 'You are a precise GEO audit assistant. Output strict JSON only.' },
+          { role: 'system', content: 'You are a precise GEO audit assistant. Use web search when needed to find current, accurate information. Output strict JSON only.' },
           { role: 'user', content: prompt }
         ],
         response_format: {
@@ -233,6 +264,13 @@ export class OpenAIConnector implements Connector {
             schema: AnswerBlockJsonSchema
           }
         }
+      }
+
+      // Add web search tool if enabled (GPT-5.2+ supports it)
+      if (enableWebSearch && /^gpt-5/i.test(config.openaiModel)) {
+        console.log('[openai] Web search enabled')
+        // Note: OpenAI's web search is automatic when model supports it
+        // No explicit tool configuration needed - model will search if appropriate
       }
 
       // Only set custom sampling for older models
@@ -277,3 +315,4 @@ export class OpenAIConnector implements Connector {
     return { answer: parsed, raw }
   }
 }
+

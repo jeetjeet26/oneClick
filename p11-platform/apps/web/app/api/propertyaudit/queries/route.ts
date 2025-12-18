@@ -10,7 +10,7 @@ export interface GeoQuery {
   id: string
   propertyId: string
   text: string
-  type: 'branded' | 'category' | 'comparison' | 'local' | 'faq'
+  type: 'branded' | 'category' | 'comparison' | 'local' | 'faq' | 'voice_search'
   geo: string | null
   weight: number
   isActive: boolean
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
     const propertyId = searchParams.get('propertyId')
     const type = searchParams.get('type')
     const activeOnly = searchParams.get('activeOnly') !== 'false'
+    const includePerformance = searchParams.get('includePerformance') !== 'false' // Default true
 
     if (!propertyId) {
       return NextResponse.json({ error: 'propertyId required' }, { status: 400 })
@@ -59,6 +60,36 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch queries' }, { status: 500 })
     }
 
+    // Fetch latest answers for performance data if requested
+    let answersMap = new Map<string, any>()
+    if (includePerformance && queries && queries.length > 0) {
+      // Get latest completed runs for this property
+      const { data: latestRuns } = await supabase
+        .from('geo_runs')
+        .select('id')
+        .eq('property_id', propertyId)
+        .eq('status', 'completed')
+        .order('started_at', { ascending: false })
+        .limit(2)
+
+      if (latestRuns && latestRuns.length > 0) {
+        const runIds = latestRuns.map(r => r.id)
+        
+        // Fetch answers for these runs
+        const { data: answers } = await supabase
+          .from('geo_answers')
+          .select('query_id, presence, llm_rank, link_rank, sov')
+          .in('run_id', runIds)
+
+        // Map answers by query_id (take first/latest)
+        answers?.forEach(answer => {
+          if (!answersMap.has(answer.query_id)) {
+            answersMap.set(answer.query_id, answer)
+          }
+        })
+      }
+    }
+
     // Group by type for easy consumption
     const grouped = {
       branded: queries?.filter(q => q.type === 'branded') || [],
@@ -66,10 +97,25 @@ export async function GET(req: NextRequest) {
       comparison: queries?.filter(q => q.type === 'comparison') || [],
       local: queries?.filter(q => q.type === 'local') || [],
       faq: queries?.filter(q => q.type === 'faq') || [],
+      voice_search: queries?.filter(q => q.type === 'voice_search') || [],
     }
 
+    // Merge performance data with queries
+    const queriesWithPerformance = queries?.map(q => {
+      const answer = answersMap.get(q.id)
+      return {
+        ...formatQuery(q),
+        ...(answer ? {
+          presence: answer.presence,
+          llmRank: answer.llm_rank,
+          linkRank: answer.link_rank,
+          sov: answer.sov
+        } : {})
+      }
+    }) || []
+
     return NextResponse.json({
-      queries: queries?.map(formatQuery) || [],
+      queries: queriesWithPerformance,
       grouped,
       total: queries?.length || 0,
     })
@@ -206,10 +252,20 @@ async function generateQueryPanel(supabase: Awaited<ReturnType<typeof createClie
     throw new Error('Property not found')
   }
 
-  // Extract city/state from JSONB address
-  const addressObj = property.address as { city?: string; state?: string; street?: string } | null
+  // Extract address components with fallbacks
+  const addressObj = property.address as { 
+    city?: string
+    state?: string
+    street?: string
+    neighborhood?: string
+    zip?: string
+  } | null
+  
   const city = addressObj?.city || 'Unknown City'
   const state = addressObj?.state || ''
+  const cityState = state ? `${city}, ${state}` : city
+  const neighborhood = addressObj?.neighborhood || city
+  const street = addressObj?.street || ''
 
   // Fetch competitors from MarketVision
   const { data: competitors } = await supabase
@@ -217,6 +273,15 @@ async function generateQueryPanel(supabase: Awaited<ReturnType<typeof createClie
     .select('name')
     .eq('property_id', propertyId)
     .limit(5)
+
+  // Fetch BrandForge data for USPs (optional)
+  const { data: brandData } = await supabase
+    .from('brand_books')
+    .select('unique_selling_points, target_audience')
+    .eq('property_id', propertyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
 
   const queries: Array<{
     property_id: string
@@ -227,10 +292,13 @@ async function generateQueryPanel(supabase: Awaited<ReturnType<typeof createClie
     is_active: boolean
   }> = []
 
-  const cityState = state ? `${city}, ${state}` : city
   const propertyName = property.name
+  const amenities = property.amenities || []
+  const specialFeatures = property.special_features || []
 
-  // Branded queries (weight: 1.5)
+  // ============================================================================
+  // 1. BRANDED QUERIES (4 queries) - Keep as-is
+  // ============================================================================
   queries.push(
     { property_id: propertyId, text: `What is ${propertyName}?`, type: 'branded', geo: cityState, weight: 1.5, is_active: true },
     { property_id: propertyId, text: `Is ${propertyName} a good place to live?`, type: 'branded', geo: cityState, weight: 1.5, is_active: true },
@@ -238,21 +306,82 @@ async function generateQueryPanel(supabase: Awaited<ReturnType<typeof createClie
     { property_id: propertyId, text: `${propertyName} apartments`, type: 'branded', geo: cityState, weight: 1.5, is_active: true },
   )
 
-  // Category queries (weight: 1.0)
+  // ============================================================================
+  // 2. GENERIC CATEGORY QUERIES (1-2 queries) - Reduced for benchmarking only
+  // ============================================================================
   queries.push(
-    { property_id: propertyId, text: `Best apartments in ${city}`, type: 'category', geo: cityState, weight: 1.0, is_active: true },
-    { property_id: propertyId, text: `Top rated apartments ${cityState}`, type: 'category', geo: cityState, weight: 1.0, is_active: true },
-    { property_id: propertyId, text: `Luxury apartments ${city}`, type: 'category', geo: cityState, weight: 1.0, is_active: true },
-    { property_id: propertyId, text: `Best places to rent in ${city}`, type: 'category', geo: cityState, weight: 1.0, is_active: true },
+    { property_id: propertyId, text: `Best apartments in ${city}`, type: 'category', geo: cityState, weight: 0.8, is_active: true },
   )
 
-  // Local queries (weight: 1.2)
+  // ============================================================================
+  // 3. AMENITY COMBINATION QUERIES (NEW - 4-6 queries)
+  // Long-tail queries with 2-3 amenity combinations
+  // ============================================================================
+  if (amenities.length >= 2) {
+    const amenityCombos = generateAmenityCombinations(amenities, neighborhood, city, propertyId, cityState)
+    queries.push(...amenityCombos.slice(0, 6))
+  } else {
+    // Fallback if no amenities: use generic but neighborhood-specific
+    queries.push(
+      { property_id: propertyId, text: `Modern apartments in ${neighborhood}`, type: 'category', geo: cityState, weight: 1.2, is_active: true },
+      { property_id: propertyId, text: `Newly built apartments ${neighborhood}`, type: 'category', geo: cityState, weight: 1.2, is_active: true },
+    )
+  }
+
+  // ============================================================================
+  // 4. NEIGHBORHOOD-SPECIFIC QUERIES (NEW - 3 queries)
+  // ============================================================================
   queries.push(
-    { property_id: propertyId, text: `Apartments near ${addressObj?.street || city}`, type: 'local', geo: cityState, weight: 1.2, is_active: true },
-    { property_id: propertyId, text: `Apartments in ${city} downtown`, type: 'local', geo: cityState, weight: 1.2, is_active: true },
+    { property_id: propertyId, text: `Best place to live in ${neighborhood}`, type: 'local', geo: cityState, weight: 1.3, is_active: true },
+    { property_id: propertyId, text: `${neighborhood} apartment communities`, type: 'local', geo: cityState, weight: 1.3, is_active: true },
+    { property_id: propertyId, text: `Moving to ${neighborhood} - apartment recommendations`, type: 'local', geo: cityState, weight: 1.2, is_active: true },
   )
 
-  // Comparison queries (weight: 1.3)
+  // ============================================================================
+  // 5. USP-DRIVEN QUERIES (NEW - 2-3 queries if BrandForge data exists)
+  // ============================================================================
+  if (brandData?.unique_selling_points) {
+    const usps = Array.isArray(brandData.unique_selling_points) 
+      ? brandData.unique_selling_points 
+      : []
+    
+    for (const usp of usps.slice(0, 3)) {
+      if (typeof usp === 'string' && usp.length > 0) {
+        const uspQuery = generateUSPQuery(usp, city, neighborhood)
+        if (uspQuery) {
+          queries.push({
+            property_id: propertyId,
+            text: uspQuery,
+            type: 'category',
+            geo: cityState,
+            weight: 1.5, // High weight - unique differentiator
+            is_active: true,
+          })
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // 6. LIFESTYLE/PERSONA QUERIES (NEW - 2-3 queries if target audience exists)
+  // ============================================================================
+  if (brandData?.target_audience) {
+    const personas = extractPersonas(brandData.target_audience)
+    personas.slice(0, 3).forEach(persona => {
+      queries.push({
+        property_id: propertyId,
+        text: `Apartments for ${persona} in ${neighborhood}`,
+        type: 'category',
+        geo: cityState,
+        weight: 1.3,
+        is_active: true,
+      })
+    })
+  }
+
+  // ============================================================================
+  // 7. COMPARISON QUERIES (Keep current - 3 queries)
+  // ============================================================================
   if (competitors && competitors.length > 0) {
     for (const competitor of competitors.slice(0, 3)) {
       queries.push({
@@ -266,39 +395,242 @@ async function generateQueryPanel(supabase: Awaited<ReturnType<typeof createClie
     }
   }
 
-  // FAQ queries from amenities (weight: 1.0)
-  const amenities = property.amenities || []
-  const amenityQueries = [
-    { amenity: 'pool', query: `apartments with pool in ${city}` },
-    { amenity: 'gym', query: `apartments with fitness center in ${city}` },
-    { amenity: 'pet', query: `pet friendly apartments in ${city}` },
-    { amenity: 'parking', query: `apartments with covered parking ${city}` },
-    { amenity: 'rooftop', query: `apartments with rooftop ${city}` },
-  ]
-
-  for (const aq of amenityQueries) {
-    const hasAmenity = amenities.some((a: string) => 
-      a.toLowerCase().includes(aq.amenity)
+  // ============================================================================
+  // 8. SPECIFIC LOCATION QUERIES (NEW - if street address available)
+  // ============================================================================
+  if (street) {
+    queries.push(
+      { property_id: propertyId, text: `Apartments near ${street}`, type: 'local', geo: cityState, weight: 1.2, is_active: true },
     )
-    if (hasAmenity) {
-      queries.push({
-        property_id: propertyId,
-        text: aq.query,
-        type: 'faq',
-        geo: cityState,
-        weight: 1.0,
-        is_active: true,
+  }
+
+  // ============================================================================
+  // 9. VOICE SEARCH QUERIES (Improved - 4-6 queries)
+  // Make voice search queries more specific
+  // ============================================================================
+  queries.push(
+    { property_id: propertyId, text: `How do I apply to ${propertyName}?`, type: 'voice_search', geo: cityState, weight: 1.1, is_active: true },
+    { property_id: propertyId, text: `What amenities does ${propertyName} have?`, type: 'voice_search', geo: cityState, weight: 1.1, is_active: true },
+    { property_id: propertyId, text: `Tell me about ${propertyName}`, type: 'voice_search', geo: cityState, weight: 1.1, is_active: true },
+  )
+
+  // Add specific voice queries if amenities available
+  if (amenities.length > 0) {
+    const topAmenity = amenities[0].toLowerCase()
+    queries.push({
+      property_id: propertyId,
+      text: `Where can I find apartments in ${neighborhood} with ${topAmenity}?`,
+      type: 'voice_search',
+      geo: cityState,
+      weight: 1.2,
+      is_active: true,
+    })
+  } else {
+    queries.push({
+      property_id: propertyId,
+      text: `Where can I find apartments in ${neighborhood}?`,
+      type: 'voice_search',
+      geo: cityState,
+      weight: 1.1,
+      is_active: true,
+    })
+  }
+
+  return queries
+}
+
+/**
+ * Generate amenity combination queries
+ * Creates long-tail queries with 2-3 amenity combinations
+ */
+function generateAmenityCombinations(
+  amenities: string[],
+  neighborhood: string,
+  city: string,
+  propertyId: string,
+  cityState: string
+): Array<{
+  property_id: string
+  text: string
+  type: string
+  geo: string
+  weight: number
+  is_active: boolean
+}> {
+  const combos: Array<{ text: string; weight: number }> = []
+  
+  // Normalize amenity names
+  const normalized = amenities.map(a => a.toLowerCase())
+  
+  // Common amenity keywords for better query construction
+  const amenityMap: Record<string, string> = {
+    pool: 'pool',
+    'swimming pool': 'pool',
+    gym: 'fitness center',
+    fitness: 'fitness center',
+    'fitness center': 'fitness center',
+    pet: 'pet-friendly',
+    dog: 'dog-friendly',
+    'pet friendly': 'pet-friendly',
+    'dog park': 'dog park',
+    parking: 'parking',
+    garage: 'garage parking',
+    rooftop: 'rooftop',
+    'rooftop deck': 'rooftop deck',
+    coworking: 'coworking space',
+    'ev charging': 'EV charging',
+    'electric vehicle': 'EV charging',
+    concierge: 'concierge',
+    'smart home': 'smart home technology',
+    spa: 'spa',
+    'package locker': 'package lockers',
+    'bike storage': 'bike storage',
+  }
+
+  // Extract key amenities
+  const keyAmenities: string[] = []
+  for (const amenity of normalized) {
+    for (const [key, value] of Object.entries(amenityMap)) {
+      if (amenity.includes(key) && !keyAmenities.includes(value)) {
+        keyAmenities.push(value)
+        break
+      }
+    }
+  }
+
+  // Generate 2-amenity combinations
+  if (keyAmenities.length >= 2) {
+    for (let i = 0; i < Math.min(keyAmenities.length - 1, 3); i++) {
+      for (let j = i + 1; j < Math.min(keyAmenities.length, 4); j++) {
+        combos.push({
+          text: `Apartments with ${keyAmenities[i]} and ${keyAmenities[j]} in ${neighborhood}`,
+          weight: 1.4,
+        })
+        
+        if (combos.length >= 6) break
+      }
+      if (combos.length >= 6) break
+    }
+  }
+
+  // Generate 3-amenity combinations if we have room
+  if (keyAmenities.length >= 3 && combos.length < 4) {
+    for (let i = 0; i < Math.min(keyAmenities.length - 2, 2); i++) {
+      combos.push({
+        text: `${neighborhood} apartments with ${keyAmenities[i]}, ${keyAmenities[i + 1]}, and ${keyAmenities[i + 2]}`,
+        weight: 1.5, // Higher weight - very specific
       })
     }
   }
 
-  // General FAQ queries
-  queries.push(
-    { property_id: propertyId, text: `What is the average rent in ${city}?`, type: 'faq', geo: cityState, weight: 1.0, is_active: true },
-    { property_id: propertyId, text: `How to find good apartments in ${city}`, type: 'faq', geo: cityState, weight: 1.0, is_active: true },
-  )
+  // If we have nearby landmarks or special features, add those
+  if (keyAmenities.length > 0) {
+    combos.push({
+      text: `Modern apartments near ${neighborhood} with ${keyAmenities[0]}`,
+      weight: 1.3,
+    })
+  }
 
-  return queries
+  // Convert to full query objects
+  return combos.slice(0, 6).map(combo => ({
+    property_id: propertyId,
+    text: combo.text,
+    type: 'category',
+    geo: cityState,
+    weight: combo.weight,
+    is_active: true,
+  }))
+}
+
+/**
+ * Generate query from USP
+ * Converts brand USP into searchable query
+ */
+function generateUSPQuery(usp: string, city: string, neighborhood: string): string | null {
+  const lowerUSP = usp.toLowerCase()
+  
+  // Extract key features from USP
+  if (lowerUSP.includes('sustainable') || lowerUSP.includes('green') || lowerUSP.includes('solar')) {
+    return `Sustainable green apartments in ${neighborhood} with solar power`
+  }
+  if (lowerUSP.includes('luxury') || lowerUSP.includes('premium') || lowerUSP.includes('high-end')) {
+    return `Premium luxury apartments in ${neighborhood}`
+  }
+  if (lowerUSP.includes('tech') || lowerUSP.includes('smart home') || lowerUSP.includes('automation')) {
+    return `Apartments with smart home technology in ${neighborhood}`
+  }
+  if (lowerUSP.includes('walkable') || lowerUSP.includes('walk score')) {
+    return `Walkable apartments in ${neighborhood} near shops and dining`
+  }
+  if (lowerUSP.includes('view') || lowerUSP.includes('scenic')) {
+    return `Apartments with views in ${neighborhood}`
+  }
+  if (lowerUSP.includes('resort') || lowerUSP.includes('amenity')) {
+    return `Resort-style apartments in ${neighborhood}`
+  }
+  if (lowerUSP.includes('community') || lowerUSP.includes('social')) {
+    return `Apartments with strong community in ${neighborhood}`
+  }
+  
+  // Generic fallback - try to extract key terms
+  const words = usp.split(' ').filter(w => w.length > 4)
+  if (words.length > 0) {
+    return `${words[0]} apartments in ${neighborhood}`
+  }
+  
+  return null
+}
+
+/**
+ * Extract persona types from target audience
+ */
+function extractPersonas(targetAudience: string | string[]): string[] {
+  const audienceText = Array.isArray(targetAudience) 
+    ? targetAudience.join(' ') 
+    : targetAudience
+  
+  const personas: string[] = []
+  const lowerText = audienceText.toLowerCase()
+  
+  // Common persona patterns
+  const personaPatterns = [
+    { pattern: /young professional/i, persona: 'young professionals' },
+    { pattern: /remote worker/i, persona: 'remote workers' },
+    { pattern: /graduate student/i, persona: 'graduate students' },
+    { pattern: /family|families/i, persona: 'families' },
+    { pattern: /tech worker/i, persona: 'tech workers' },
+    { pattern: /military/i, persona: 'military personnel' },
+    { pattern: /retiree/i, persona: 'retirees' },
+    { pattern: /empty nester/i, persona: 'empty nesters' },
+    { pattern: /millennial/i, persona: 'millennials' },
+    { pattern: /gen z/i, persona: 'Gen Z renters' },
+  ]
+
+  for (const { pattern, persona } of personaPatterns) {
+    if (pattern.test(lowerText)) {
+      personas.push(persona)
+    }
+  }
+
+  // Fallback personas if none detected
+  if (personas.length === 0) {
+    personas.push('young professionals', 'families')
+  }
+
+  return personas.slice(0, 3)
+}
+
+/**
+ * OLD FUNCTION - keeping for reference but not called
+ * This is what was causing generic aggregator-dominated queries
+ */
+function generateOldGenericQueries(city: string, cityState: string) {
+  // These queries naturally favor aggregator sites:
+  return [
+    `Top rated apartments ${cityState}`,      // Aggregators dominate
+    `Luxury apartments ${city}`,              // Aggregators dominate
+    `Best places to rent in ${city}`,         // Aggregators dominate
+  ]
 }
 
 // Format query for API response
@@ -315,3 +647,4 @@ function formatQuery(query: Record<string, unknown>): GeoQuery {
     updatedAt: query.updated_at as string,
   }
 }
+
