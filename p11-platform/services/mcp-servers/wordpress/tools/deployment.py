@@ -440,3 +440,5 @@ def generate_secure_password(length: int = 24) -> str:
     return ''.join(secrets.choice(chars) for _ in range(length))
 
 
+
+

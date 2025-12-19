@@ -1,14 +1,18 @@
 # Load environment from root .env before anything else
 from utils.config import SUPABASE_URL
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import asyncio
 import os
 import logging
 from concurrent.futures import ThreadPoolExecutor
+
+# Import auth utilities
+from utils.auth import verify_api_key, log_request_middleware
+from utils.supabase_client import get_supabase
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,9 +20,12 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="P11 Data Engine",
-    version="0.2.0",
-    description="ETL pipelines for marketing data ingestion and competitive intelligence scraping"
+    version="0.3.0",
+    description="ETL pipelines and long-running job execution for P11 Platform"
 )
+
+# Add request logging middleware
+app.middleware("http")(log_request_middleware)
 
 # CORS configuration for development and production
 CORS_ORIGINS = [
@@ -48,6 +55,9 @@ app.add_middleware(
 # Thread pool for running pipelines
 executor = ThreadPoolExecutor(max_workers=3)
 
+# Task keeper to prevent garbage collection of background tasks
+_background_tasks = set()
+
 
 class PipelineResponse(BaseModel):
     status: str
@@ -59,6 +69,60 @@ class RunAllResponse(BaseModel):
     status: str
     message: str
     pipelines: list[str]
+
+
+async def check_batch_completion(batch_id: str, supabase):
+    """
+    Check if all runs in a batch are complete.
+    If yes, trigger holistic cross-model analysis.
+    """
+    try:
+        # Get all runs in this batch
+        batch_runs = supabase.table('geo_runs')\
+            .select('id, status, surface')\
+            .eq('batch_id', batch_id)\
+            .execute()
+        
+        if not batch_runs.data:
+            return
+        
+        runs = batch_runs.data
+        completed_count = sum(1 for r in runs if r['status'] in ['completed', 'failed'])
+        
+        logger.info(f"[Batch {batch_id}] Status: {completed_count}/{len(runs)} runs complete")
+        
+        # Check if all runs are done
+        if completed_count == len(runs):
+            logger.info(f"[Batch {batch_id}] ✅ ALL RUNS COMPLETE - Triggering cross-model analysis")
+            
+            surfaces = [r['surface'] for r in runs]
+            logger.info(f"[Batch {batch_id}] Surfaces completed: {', '.join(surfaces)}")
+            
+            # Check if we have both openai and claude runs
+            has_openai = any(r['surface'] == 'openai' for r in runs)
+            has_claude = any(r['surface'] == 'claude' for r in runs)
+            
+            if has_openai and has_claude:
+                # Trigger cross-model analysis
+                try:
+                    from connectors.cross_model_analyzer import CrossModelAnalyzer
+                    
+                    analyzer = CrossModelAnalyzer(supabase)
+                    result = await analyzer.analyze_batch(batch_id)
+                    
+                    if result.get('success'):
+                        logger.info(f"[Batch {batch_id}] ✅ Cross-model analysis complete!")
+                        logger.info(f"[Batch {batch_id}] Agreement rate: {result.get('analysis', {}).get('agreement_rate', 0)}%")
+                    else:
+                        logger.warning(f"[Batch {batch_id}] Cross-model analysis failed: {result.get('error')}")
+                        
+                except Exception as e:
+                    logger.error(f"[Batch {batch_id}] Cross-model analysis error: {e}", exc_info=True)
+            else:
+                logger.info(f"[Batch {batch_id}] Single-model batch, skipping cross-model analysis")
+            
+    except Exception as e:
+        logger.error(f"[Batch {batch_id}] Error checking completion: {e}", exc_info=True)
 
 
 @app.get('/')
@@ -73,8 +137,524 @@ def read_root():
 
 @app.get('/health')
 def health_check():
-    return {'status': 'healthy'}
+    """
+    Enhanced health check with dependency status.
+    Returns detailed health information for monitoring.
+    """
+    health_status = {
+        'status': 'healthy',
+        'version': '0.3.0',
+        'timestamp': os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip() if os.name != 'nt' else None,
+        'dependencies': {}
+    }
+    
+    # Check Supabase configuration
+    health_status['dependencies']['supabase'] = {
+        'configured': bool(SUPABASE_URL and os.environ.get('SUPABASE_SERVICE_KEY')),
+        'url': SUPABASE_URL[:30] + '...' if SUPABASE_URL else None
+    }
+    
+    # Check LLM API keys (for PropertyAudit)
+    health_status['dependencies']['openai'] = {
+        'configured': bool(os.environ.get('OPENAI_API_KEY'))
+    }
+    
+    health_status['dependencies']['anthropic'] = {
+        'configured': bool(os.environ.get('ANTHROPIC_API_KEY'))
+    }
+    
+    # Check data-engine API key
+    health_status['dependencies']['auth'] = {
+        'api_key_configured': bool(os.environ.get('DATA_ENGINE_API_KEY')),
+        'warning': 'Running in open mode' if not os.environ.get('DATA_ENGINE_API_KEY') else None
+    }
+    
+    # Overall health determination
+    critical_deps_ok = (
+        health_status['dependencies']['supabase']['configured']
+    )
+    
+    if not critical_deps_ok:
+        health_status['status'] = 'degraded'
+        health_status['message'] = 'Critical dependencies not configured'
+    
+    return health_status
 
+
+# =============================================================================
+# JOB EXECUTION ENDPOINTS (Protected with API Key)
+# =============================================================================
+
+class JobRequest(BaseModel):
+    """Request model for job execution."""
+    run_id: str
+    surface: Optional[str] = None  # For PropertyAudit: 'openai' or 'claude'
+
+
+class JobResponse(BaseModel):
+    """Response model for job execution."""
+    status: str
+    message: str
+    run_id: str
+    details: Optional[Dict[str, Any]] = None
+
+
+@app.post('/jobs/propertyaudit/run', response_model=JobResponse)
+async def run_propertyaudit_job(
+    request: JobRequest,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Execute a PropertyAudit GEO run.
+    Protected endpoint - requires X-API-Key header.
+    
+    This endpoint replaces /api/propertyaudit/process from Next.js to avoid
+    Vercel timeout issues for long-running LLM operations.
+    
+    Jobs from the same batch_id execute in parallel for optimal performance.
+    
+    Args:
+        request: JobRequest with run_id
+        api_key: Validated API key from header
+    
+    Returns:
+        JobResponse with status and run_id
+    """
+    logger.info(f"[PropertyAudit] Job request received for run_id={request.run_id}")
+    
+    try:
+        # Validate run exists and is in queued state
+        supabase = get_supabase()
+        run_check = supabase.table('geo_runs').select('status, batch_id').eq('id', request.run_id).single().execute()
+        
+        if not run_check.data:
+            raise HTTPException(status_code=404, detail=f"Run {request.run_id} not found")
+        
+        if run_check.data['status'] != 'queued':
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Run {request.run_id} is not in queued state (current status: {run_check.data['status']})"
+            )
+        
+        batch_id = run_check.data.get('batch_id')
+        
+        # Execute immediately using asyncio.create_task for true parallelism
+        from jobs.propertyaudit import PropertyAuditExecutor
+        
+        # Copy run_id and batch_id to avoid closure issues
+        run_id_copy = str(request.run_id)
+        batch_id_copy = str(batch_id) if batch_id else None
+        
+        async def execute_job():
+            try:
+                # Create a NEW Supabase client for this task (thread-safe)
+                task_supabase = get_supabase()
+                executor = PropertyAuditExecutor(task_supabase)
+                
+                logger.info(f"[PropertyAudit] 🚀 Task STARTED for run_id={run_id_copy}")
+                result = await executor.execute_run(run_id_copy)
+                logger.info(f"[PropertyAudit] ✅ Task COMPLETED for run_id={run_id_copy}: {result}")
+                
+                # Check if all jobs in batch are complete
+                if batch_id_copy:
+                    await check_batch_completion(batch_id_copy, task_supabase)
+                    
+            except Exception as e:
+                logger.error(f"[PropertyAudit] ❌ Task FAILED for run_id={run_id_copy}: {e}", exc_info=True)
+        
+        # Create task for parallel execution with proper tracking
+        task = asyncio.create_task(execute_job())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)  # Clean up when done
+        
+        # Give event loop a chance to schedule the task
+        await asyncio.sleep(0)
+        
+        logger.info(f"[PropertyAudit] 📝 Task CREATED for run_id={request.run_id}, active tasks: {len(_background_tasks)}")
+        
+        return JobResponse(
+            status="accepted",
+            message=f"PropertyAudit job started for run {request.run_id}",
+            run_id=request.run_id,
+            details={
+                'batch_id': batch_id,
+                'note': 'Job is running in parallel with other batch members. Poll geo_runs table for status updates.'
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PropertyAudit] Failed to start job for run_id={request.run_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start job: {str(e)}")
+
+
+class BatchJobRequest(BaseModel):
+    """Request model for batch job execution."""
+    batch_id: str
+
+
+class BatchJobResponse(BaseModel):
+    """Response model for batch job execution."""
+    status: str
+    message: str
+    batch_id: str
+    runs: List[Dict[str, Any]]
+    details: Optional[Dict[str, Any]] = None
+
+
+@app.post('/jobs/propertyaudit/run-batch', response_model=BatchJobResponse)
+async def run_propertyaudit_batch(
+    request: BatchJobRequest,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Execute ALL PropertyAudit runs for a batch in TRUE PARALLEL.
+    
+    This endpoint triggers both OpenAI and Claude runs simultaneously,
+    then performs cross-model analysis when both complete.
+    
+    Protected endpoint - requires X-API-Key header.
+    
+    Args:
+        request: BatchJobRequest with batch_id
+        api_key: Validated API key from header
+    
+    Returns:
+        BatchJobResponse with status and run details
+    """
+    logger.info(f"[PropertyAudit] Batch execution request for batch_id={request.batch_id}")
+    
+    try:
+        supabase = get_supabase()
+        
+        # 1. Fetch all queued runs for this batch
+        batch_runs = supabase.table('geo_runs')\
+            .select('id, status, surface, property_id')\
+            .eq('batch_id', request.batch_id)\
+            .eq('status', 'queued')\
+            .execute()
+        
+        if not batch_runs.data:
+            # Check if runs exist but aren't queued
+            all_runs = supabase.table('geo_runs')\
+                .select('id, status, surface')\
+                .eq('batch_id', request.batch_id)\
+                .execute()
+            
+            if all_runs.data:
+                statuses = [r['status'] for r in all_runs.data]
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No queued runs in batch {request.batch_id}. Current statuses: {statuses}"
+                )
+            else:
+                raise HTTPException(status_code=404, detail=f"Batch {request.batch_id} not found")
+        
+        runs = batch_runs.data
+        logger.info(f"[PropertyAudit] Found {len(runs)} queued runs in batch: {[r['surface'] for r in runs]}")
+        
+        # #region agent log - Hypothesis A: Log actual runs data
+        import json as _json
+        _log_path = r"c:\Users\jasji\projects\oneClick\.cursor\debug.log"
+        with open(_log_path, 'a') as _f:
+            _f.write(_json.dumps({"hypothesisId": "A", "location": "main.py:batch_runs_data", "message": "Runs data from DB", "data": {"runs_count": len(runs), "runs": runs}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+        # #endregion
+        
+        # 2. Import executor and create tasks for parallel execution
+        from jobs.propertyaudit import PropertyAuditExecutor
+        
+        batch_id_copy = str(request.batch_id)
+        run_results = []
+        
+        async def execute_single_run(run_data: Dict[str, Any]):
+            """Execute a single run and return result."""
+            run_id = run_data['id']
+            surface = run_data['surface']
+            
+            # #region agent log - Hypothesis L: Log task start
+            with open(_log_path, 'a') as _f:
+                _f.write(_json.dumps({"hypothesisId": "L", "location": "main.py:execute_single_run_start", "message": f"Task START for {surface}", "data": {"run_id": run_id, "surface": surface}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+            # #endregion
+            
+            try:
+                # Create a NEW Supabase client for this task (thread-safe)
+                task_supabase = get_supabase()
+                executor = PropertyAuditExecutor(task_supabase)
+                
+                logger.info(f"[PropertyAudit] 🚀 Starting {surface.upper()} run: {run_id}")
+                result = await executor.execute_run(run_id)
+                logger.info(f"[PropertyAudit] ✅ Completed {surface.upper()} run: {run_id}")
+                
+                return {
+                    'run_id': run_id,
+                    'surface': surface,
+                    'success': result.get('success', False),
+                    'score': result.get('score'),
+                    'visibility': result.get('visibility'),
+                    'error': result.get('error')
+                }
+                
+            except Exception as e:
+                # #region agent log - Hypothesis B: Log task exception
+                with open(_log_path, 'a') as _f:
+                    _f.write(_json.dumps({"hypothesisId": "B", "location": "main.py:execute_single_run_exception", "message": f"Task EXCEPTION for {surface}", "data": {"run_id": run_id, "surface": surface, "error": str(e)}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+                # #endregion
+                logger.error(f"[PropertyAudit] ❌ Failed {surface.upper()} run {run_id}: {e}", exc_info=True)
+                return {
+                    'run_id': run_id,
+                    'surface': surface,
+                    'success': False,
+                    'error': str(e)
+                }
+        
+        # 3. Execute ALL runs in parallel using asyncio.gather
+        logger.info(f"[PropertyAudit] 🚀🚀 Executing {len(runs)} runs in PARALLEL...")
+        
+        # #region agent log - Hypothesis A/E: Log before creating tasks
+        with open(_log_path, 'a') as _f:
+            _f.write(_json.dumps({"hypothesisId": "A", "location": "main.py:before_tasks_creation", "message": "About to create tasks", "data": {"runs_count": len(runs), "surfaces": [r['surface'] for r in runs]}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+        # #endregion
+        
+        # FIX: Use TaskGroup for proper concurrent execution (Python 3.11+)
+        # This is the modern, robust approach that guarantees all tasks run concurrently
+        run_results = []
+        async with asyncio.TaskGroup() as tg:
+            task_handles = []
+            for run in runs:
+                # #region agent log - Hypothesis L: Log task creation in TaskGroup
+                with open(_log_path, 'a') as _f:
+                    _f.write(_json.dumps({"hypothesisId": "L", "location": "main.py:taskgroup_create", "message": f"Creating TaskGroup task for {run['surface']}", "data": {"run_id": run['id'], "surface": run['surface']}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+                # #endregion
+                task = tg.create_task(execute_single_run(run))
+                task_handles.append((run, task))
+        
+        # Collect results after TaskGroup completes
+        for run, task in task_handles:
+            try:
+                run_results.append(task.result())
+            except Exception as e:
+                run_results.append({'run_id': run['id'], 'surface': run['surface'], 'success': False, 'error': str(e)})
+        
+        # #region agent log - Hypothesis L: Log TaskGroup completion
+        with open(_log_path, 'a') as _f:
+            _f.write(_json.dumps({"hypothesisId": "L", "location": "main.py:taskgroup_complete", "message": "TaskGroup completed", "data": {"results_count": len(run_results)}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+        # #endregion
+        
+        # #region agent log - Hypothesis C: Log gather results
+        with open(_log_path, 'a') as _f:
+            _f.write(_json.dumps({"hypothesisId": "C", "location": "main.py:after_gather", "message": "Gather completed", "data": {"results_count": len(run_results), "results_types": [type(r).__name__ for r in run_results]}, "timestamp": int(__import__('time').time() * 1000)}) + '\n')
+        # #endregion
+        
+        # Process results
+        processed_results = []
+        for i, result in enumerate(run_results):
+            if isinstance(result, Exception):
+                processed_results.append({
+                    'run_id': runs[i]['id'],
+                    'surface': runs[i]['surface'],
+                    'success': False,
+                    'error': str(result)
+                })
+            else:
+                processed_results.append(result)
+        
+        logger.info(f"[PropertyAudit] All {len(runs)} runs completed")
+        
+        # 4. Trigger cross-model analysis
+        supabase_for_analysis = get_supabase()
+        await check_batch_completion(batch_id_copy, supabase_for_analysis)
+        
+        # 5. Build response
+        successful = sum(1 for r in processed_results if r.get('success'))
+        
+        return BatchJobResponse(
+            status="completed",
+            message=f"Batch execution complete: {successful}/{len(runs)} runs succeeded",
+            batch_id=request.batch_id,
+            runs=processed_results,
+            details={
+                'parallel_execution': True,
+                'cross_model_analysis_triggered': len(runs) >= 2,
+                'surfaces': [r['surface'] for r in runs]
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PropertyAudit] Batch execution failed for {request.batch_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch execution failed: {str(e)}")
+
+
+@app.get('/jobs/propertyaudit/batch/{batch_id}/analysis')
+async def get_batch_analysis(
+    batch_id: str,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Get cross-model analysis results for a completed batch.
+    
+    Returns:
+        - Score comparison between OpenAI and Claude
+        - Agreement rate across queries
+        - Unified recommendations
+        - Consensus and divergent insights
+    """
+    logger.info(f"[PropertyAudit] Fetching analysis for batch {batch_id}")
+    
+    try:
+        supabase = get_supabase()
+        
+        # Fetch runs with their cross-model analysis
+        runs = supabase.table('geo_runs')\
+            .select('id, surface, status, cross_model_analysis')\
+            .eq('batch_id', batch_id)\
+            .execute()
+        
+        if not runs.data:
+            raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+        
+        # Get analysis from any run (they should all have the same)
+        analysis = None
+        for run in runs.data:
+            if run.get('cross_model_analysis'):
+                analysis = run['cross_model_analysis']
+                break
+        
+        # Fetch scores for comparison
+        openai_run = next((r for r in runs.data if r['surface'] == 'openai'), None)
+        claude_run = next((r for r in runs.data if r['surface'] == 'claude'), None)
+        
+        scores = {}
+        if openai_run:
+            openai_scores = supabase.table('geo_scores')\
+                .select('overall_score, visibility_pct, avg_llm_rank')\
+                .eq('run_id', openai_run['id'])\
+                .single()\
+                .execute()
+            if openai_scores.data:
+                scores['openai'] = openai_scores.data
+        
+        if claude_run:
+            claude_scores = supabase.table('geo_scores')\
+                .select('overall_score, visibility_pct, avg_llm_rank')\
+                .eq('run_id', claude_run['id'])\
+                .single()\
+                .execute()
+            if claude_scores.data:
+                scores['claude'] = claude_scores.data
+        
+        return {
+            'success': True,
+            'batch_id': batch_id,
+            'runs': [{'id': r['id'], 'surface': r['surface'], 'status': r['status']} for r in runs.data],
+            'scores': scores,
+            'cross_model_analysis': analysis,
+            'analysis_available': analysis is not None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PropertyAudit] Error fetching batch analysis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch analysis: {str(e)}")
+
+
+@app.post('/jobs/propertyaudit/batch/{batch_id}/reanalyze')
+async def rerun_batch_analysis(
+    batch_id: str,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Re-run cross-model analysis for an existing batch.
+    
+    Use this if the initial analysis failed or you want to regenerate
+    recommendations with updated logic.
+    """
+    logger.info(f"[PropertyAudit] Re-running analysis for batch {batch_id}")
+    
+    try:
+        supabase = get_supabase()
+        
+        # Verify batch exists and has completed runs
+        runs = supabase.table('geo_runs')\
+            .select('id, surface, status')\
+            .eq('batch_id', batch_id)\
+            .execute()
+        
+        if not runs.data:
+            raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+        
+        completed = [r for r in runs.data if r['status'] == 'completed']
+        if len(completed) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Need at least 2 completed runs for cross-model analysis (found {len(completed)})"
+            )
+        
+        # Run cross-model analysis
+        from connectors.cross_model_analyzer import CrossModelAnalyzer
+        
+        analyzer = CrossModelAnalyzer(supabase)
+        result = await analyzer.analyze_batch(batch_id)
+        
+        return {
+            'success': result.get('success', False),
+            'batch_id': batch_id,
+            'message': 'Cross-model analysis re-run complete' if result.get('success') else result.get('error'),
+            'agreement_rate': result.get('analysis', {}).get('agreement_rate'),
+            'recommendations_generated': 'recommendations' in result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PropertyAudit] Error re-running analysis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@app.post('/jobs/reviewflow/analyze-batch', response_model=JobResponse)
+async def run_reviewflow_batch_job(
+    request: JobRequest,
+    background_tasks: BackgroundTasks,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Execute ReviewFlow batch analysis in the background.
+    Protected endpoint - requires X-API-Key header.
+    
+    PLACEHOLDER: To be implemented in Phase 2.
+    """
+    return JobResponse(
+        status="not_implemented",
+        message="ReviewFlow batch analysis endpoint not yet implemented (Phase 2)",
+        run_id=request.run_id
+    )
+
+
+@app.post('/jobs/knowledge-refresh', response_model=JobResponse)
+async def run_knowledge_refresh_job(
+    request: JobRequest,
+    background_tasks: BackgroundTasks,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Execute knowledge refresh for a property in the background.
+    Protected endpoint - requires X-API-Key header.
+    
+    PLACEHOLDER: To be implemented in Phase 3.
+    """
+    return JobResponse(
+        status="not_implemented",
+        message="Knowledge refresh endpoint not yet implemented (Phase 3)",
+        run_id=request.run_id
+    )
+
+
+# =============================================================================
+# PIPELINE ENDPOINTS (Legacy - kept for backward compatibility)
+# =============================================================================
 
 @app.post('/pipelines/meta', response_model=PipelineResponse)
 async def run_meta_pipeline(background_tasks: BackgroundTasks):

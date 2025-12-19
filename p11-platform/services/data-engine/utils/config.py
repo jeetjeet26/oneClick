@@ -1,27 +1,34 @@
 """
 Shared configuration loader for the data-engine.
-Loads environment variables from the monorepo root .env file.
+Loads environment variables from BOTH root and local .env files.
+Local .env values override root .env values.
 """
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Find and load the root .env file
+# Load environment files in order (root first, then local overlay)
 # Path: services/data-engine/utils/config.py -> p11-platform/.env
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ROOT_ENV = ROOT_DIR / ".env"
+LOCAL_ENV = Path(__file__).resolve().parents[1] / ".env"
 
+loaded_files = []
+
+# Load root .env if it exists
 if ROOT_ENV.exists():
-    load_dotenv(ROOT_ENV)
-    print(f"[OK] Loaded environment from {ROOT_ENV}")
+    load_dotenv(ROOT_ENV, override=False)
+    loaded_files.append(str(ROOT_ENV))
+
+# Load local .env if it exists (overrides root values)
+if LOCAL_ENV.exists():
+    load_dotenv(LOCAL_ENV, override=True)
+    loaded_files.append(str(LOCAL_ENV))
+
+if loaded_files:
+    print(f"[OK] Loaded environment from: {', '.join(loaded_files)}")
 else:
-    # Fallback: try local .env in data-engine folder
-    LOCAL_ENV = Path(__file__).resolve().parents[1] / ".env"
-    if LOCAL_ENV.exists():
-        load_dotenv(LOCAL_ENV)
-        print(f"[OK] Loaded environment from {LOCAL_ENV}")
-    else:
-        print("[WARN] No .env file found. Using system environment variables.")
+    print("[WARN] No .env file found. Using system environment variables.")
 
 # Export commonly used config values
 SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL")

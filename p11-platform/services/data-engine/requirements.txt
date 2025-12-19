@@ -22,6 +22,7 @@ tenacity
 
 # AI / LLM
 openai
+anthropic
 
 # Async utilities
 nest-asyncio

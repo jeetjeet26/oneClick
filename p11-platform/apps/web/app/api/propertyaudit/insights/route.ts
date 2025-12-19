@@ -23,12 +23,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'propertyId required' }, { status: 400 })
     }
 
-    // Get latest completed runs
+    // Get latest completed runs with batch info and cross-model analysis
     let runsQuery = supabase
       .from('geo_runs')
       .select(`
         id,
         surface,
+        batch_id,
+        batch_size,
+        status,
+        started_at,
+        finished_at,
+        cross_model_analysis,
         geo_answers (
           id,
           presence,
@@ -41,15 +47,39 @@ export async function GET(req: NextRequest) {
         )
       `)
       .eq('property_id', propertyId)
-      .eq('status', 'completed')
       .order('started_at', { ascending: false })
-      .limit(5)
+      .limit(10)  // Get more to check batch status
 
     if (surface && surface !== 'both') {
       runsQuery = runsQuery.eq('surface', surface)
     }
 
-    const { data: runs, error: runsError } = await runsQuery
+    const { data: allRuns, error: runsError } = await runsQuery
+    
+    // Check batch completion status
+    const latestBatchId = allRuns?.[0]?.batch_id
+    let batchComplete = true
+    let batchStatus = 'complete'
+    
+    if (latestBatchId) {
+      const batchRuns = allRuns.filter((r: any) => r.batch_id === latestBatchId)
+      const completedRuns = batchRuns.filter((r: any) => r.status === 'completed')
+      const failedRuns = batchRuns.filter((r: any) => r.status === 'failed')
+      const runningRuns = batchRuns.filter((r: any) => r.status === 'running')
+      
+      if (runningRuns.length > 0) {
+        batchComplete = false
+        batchStatus = 'running'
+      } else if (completedRuns.length < batchRuns.length) {
+        batchComplete = false
+        batchStatus = 'partial'
+      }
+      
+      console.log(`[Insights] Batch ${latestBatchId}: ${completedRuns.length}/${batchRuns.length} complete`)
+    }
+    
+    // Only use completed runs for insights
+    const runs = allRuns?.filter((r: any) => r.status === 'completed')
 
     if (runsError) {
       console.error('Error fetching runs:', runsError)
@@ -144,6 +174,9 @@ export async function GET(req: NextRequest) {
     const brandCitations = domains.filter(d => d.isBrandDomain).reduce((sum, d) => sum + d.count, 0)
     const brandSOV = totalCitations > 0 ? (brandCitations / totalCitations) * 100 : 0
 
+    // Extract cross-model analysis from batch runs
+    const crossModelAnalysis = allRuns?.find((r: any) => r.cross_model_analysis)?.cross_model_analysis || null
+
     return NextResponse.json({
       competitors,
       domains,
@@ -151,7 +184,22 @@ export async function GET(req: NextRequest) {
         totalCompetitors: competitors.length,
         brandSOV: brandSOV.toFixed(1),
         topCompetitor: competitors[0] || null
-      }
+      },
+      batchStatus: {
+        complete: batchComplete,
+        status: batchStatus,
+        batchId: latestBatchId,
+        message: batchComplete 
+          ? 'All models complete - insights reflect full cross-model analysis'
+          : 'Some models still running - insights may be partial'
+      },
+      // Cross-model analysis results (if available)
+      crossModelAnalysis: crossModelAnalysis ? {
+        agreementRate: crossModelAnalysis.agreement_rate,
+        scoreComparison: crossModelAnalysis.score_comparison,
+        visibilityComparison: crossModelAnalysis.visibility_comparison,
+        recommendations: crossModelAnalysis.recommendations
+      } : null
     })
   } catch (error) {
     console.error('PropertyAudit Insights Error:', error)

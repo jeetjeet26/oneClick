@@ -8,3 +8,5 @@ alter table if exists geo_answers
   add column if not exists analysis_method text default 'structured';
 
 
+
+

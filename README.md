@@ -82,7 +82,75 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 
 ---
 
-## ✨ Latest Updates (Dec 16, 2025)
+## ✨ Latest Updates (Dec 18, 2025)
+
+### 🚀 Data Engine Migration - PropertyAudit Phase 1 Complete! (Dec 18, 2025)
+**Zero-downtime migration of PropertyAudit to Python data-engine with 50% faster parallel execution!**
+
+#### What Was Implemented
+
+**Feature Flag Architecture:**
+- Instant switch between TypeScript (legacy) and Python (data-engine) execution
+- Environment variable: `PROPERTYAUDIT_USE_DATA_ENGINE=true/false`
+- No downtime, instant rollback capability
+- Same database tables used by both execution paths
+
+**Full TypeScript Parity in Python:**
+- ✅ Structured Mode - Direct GEO extraction with schema
+- ✅ Natural Mode - Two-phase: natural response → analysis
+- ✅ Web Search Integration - OpenAI `web_search_preview` tool
+- ✅ Location Context - Detailed property location in prompts
+- ✅ Quality Flags - Detects hallucinations, no_sources, outdated_info
+- ✅ Proper Scoring Formula - 45% Position + 25% Link + 20% SOV + 10% Accuracy
+- ✅ Model-Specific Logic - GPT-5.2 `max_completion_tokens` handling
+- ✅ Retry Logic - Exponential backoff with 3 retries
+
+**Parallel Execution (50% Faster!):**
+- OpenAI and Claude now execute simultaneously
+- Both models finish at ~same time instead of sequential
+- Batch coordination with `batch_id` and `batch_size` columns
+- Cross-model insights aggregation
+
+**Real-time Progress Tracking:**
+- Progress percentage updates (5% → 11% → 16%...)
+- `progress_pct`, `current_query_index`, `last_updated_at` columns
+- Stalled job detection for monitoring
+
+#### New Files Created
+```
+services/data-engine/
+├── connectors/           # LLM connectors with full parity
+│   ├── openai_connector.py           # Structured mode
+│   ├── claude_connector.py           # Structured mode
+│   ├── openai_natural_connector.py   # Natural two-phase mode
+│   ├── claude_natural_connector.py   # Natural two-phase mode
+│   ├── cross_model_analyzer.py       # Cross-model analysis
+│   ├── evaluator.py                  # Scoring formula
+│   └── schemas.py                    # Strict JSON schemas
+├── jobs/
+│   └── propertyaudit.py              # Complete job executor
+├── utils/
+│   └── auth.py                       # API key authentication
+└── start.ps1                         # PowerShell startup script
+
+supabase/migrations/
+├── 20251218000000_add_geo_runs_progress.sql    # Progress tracking
+└── 20251218010000_add_geo_runs_batch_columns.sql  # Batch coordination
+```
+
+#### Performance Comparison
+
+| Metric | TypeScript (Legacy) | Python Data-Engine |
+|--------|--------------------|--------------------|
+| Max Runtime | 5-10 min (Vercel limit) | **Unlimited** |
+| Execution | Sequential | **Parallel (50% faster)** |
+| Progress Visibility | None | **Real-time %** |
+| Query Handling | < 10 queries | **100+ queries** |
+| Timeout Risk | High | **None** |
+
+**Documentation:** See [DATA_ENGINE_MIGRATION.md](./docs/DATA_ENGINE_MIGRATION.md) for complete guide.
+
+---
 
 ### 🔧 Widget Sessions Fix (Dec 16, 2025)
 **Resolved critical LumaLeasing widget session tracking issues!**

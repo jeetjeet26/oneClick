@@ -206,3 +206,5 @@ export function CompetitorInsights({ propertyId, surface = 'both' }: CompetitorI
   )
 }
 
+
+

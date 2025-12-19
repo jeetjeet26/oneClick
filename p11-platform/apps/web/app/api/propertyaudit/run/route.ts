@@ -52,8 +52,9 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Create runs for each surface
+    // Create runs for each surface with shared batch_id
     const runs: GeoRun[] = []
+    const batchId = crypto.randomUUID() // Group related runs together
     const modelNames = {
       openai: process.env.GEO_OPENAI_MODEL || 'gpt-5.2',
       claude: process.env.GEO_CLAUDE_MODEL || 'claude-sonnet-4-20250514',
@@ -71,6 +72,8 @@ export async function POST(req: NextRequest) {
           status: 'queued',
           query_count: queryCount,
           started_at: new Date().toISOString(),
+          batch_id: batchId,
+          batch_size: surfaces.length
         })
         .select()
         .single()
@@ -82,31 +85,105 @@ export async function POST(req: NextRequest) {
 
       runs.push(formatRun(run))
     }
+    
+    console.log(`✅ [PropertyAudit] Created batch ${batchId} with ${runs.length} runs`)
 
     if (runs.length === 0) {
       return NextResponse.json({ error: 'Failed to create runs' }, { status: 500 })
     }
 
-    // Trigger processing for each run (fire and forget)
-    // Use 10 minute timeout since processing many queries takes a long time
+    // Trigger processing - prefer batch execution for parallel processing
+    // Feature flag: Use data-engine or TypeScript processor
+    const USE_DATA_ENGINE = process.env.PROPERTYAUDIT_USE_DATA_ENGINE === 'true'
     const baseUrl = req.nextUrl.origin
-    for (const run of runs) {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 600000) // 10 minute timeout
+    
+    if (USE_DATA_ENGINE) {
+      // ============================================================
+      // PARALLEL EXECUTION: Fire separate HTTP requests for each run
+      // HTTP-level parallelism is more reliable than in-process asyncio
+      // Each run executes independently on the data-engine
+      // ============================================================
+      const dataEngineUrl = process.env.DATA_ENGINE_URL || 'http://localhost:8000'
+      const apiKey = process.env.DATA_ENGINE_API_KEY
       
-      fetch(`${baseUrl}/api/propertyaudit/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: run.id }),
-        signal: controller.signal,
-      })
-        .then(() => clearTimeout(timeoutId))
-        .catch(err => {
-          clearTimeout(timeoutId)
-          if (err.name !== 'AbortError') {
-            console.error(`Failed to trigger processing for run ${run.id}:`, err)
-          }
+      if (!apiKey) {
+        console.warn('⚠️  DATA_ENGINE_API_KEY not set - data-engine may reject request')
+      }
+      
+      console.log(`🚀 [PropertyAudit] Firing ${runs.length} PARALLEL HTTP requests to data-engine`)
+      
+      // Fire all requests in parallel (fire-and-forget)
+      const promises = runs.map(run => {
+        console.log(`🚀 [PropertyAudit] Starting ${run.surface.toUpperCase()} run ${run.id}`)
+        
+        return fetch(`${dataEngineUrl}/jobs/propertyaudit/run`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey || '',
+            'X-Correlation-ID': run.id,
+          },
+          body: JSON.stringify({ 
+            run_id: run.id,
+            surface: run.surface,
+            batch_id: batchId  // Include batch_id for cross-model analysis later
+          }),
         })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Data-engine returned ${response.status}`)
+            }
+            return response.json()
+          })
+          .then(data => {
+            console.log(`✅ [PropertyAudit] ${run.surface.toUpperCase()} run ${run.id} accepted:`, data)
+            return { success: true, run, data }
+          })
+          .catch(err => {
+            console.error(`❌ [PropertyAudit] ${run.surface.toUpperCase()} run ${run.id} failed:`, err)
+            serviceClient
+              .from('geo_runs')
+              .update({ 
+                status: 'failed', 
+                error_message: `Data-engine error: ${err.message}`,
+                finished_at: new Date().toISOString()
+              })
+              .eq('id', run.id)
+              .execute()
+            return { success: false, run, error: err.message }
+          })
+      })
+      
+      // Don't await - let them run in background
+      Promise.all(promises).then(results => {
+        const succeeded = results.filter(r => r.success).length
+        console.log(`✅ [PropertyAudit] Batch ${batchId}: ${succeeded}/${runs.length} runs accepted by data-engine`)
+      })
+      
+    } else {
+      // ============================================================
+      // OPTION 3: TypeScript Execution (Legacy, has timeout issues)
+      // ============================================================
+      for (const run of runs) {
+        console.log(`⚠️  [PropertyAudit] Using TypeScript processor (legacy) for run ${run.id}`)
+        
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 600000) // 10 minute timeout
+        
+        fetch(`${baseUrl}/api/propertyaudit/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ runId: run.id }),
+          signal: controller.signal,
+        })
+          .then(() => clearTimeout(timeoutId))
+          .catch(err => {
+            clearTimeout(timeoutId)
+            if (err.name !== 'AbortError') {
+              console.error(`Failed to trigger processing for run ${run.id}:`, err)
+            }
+          })
+      }
     }
 
     return NextResponse.json({
@@ -187,4 +264,6 @@ function formatRun(run: Record<string, unknown>): GeoRun {
     errorMessage: run.error_message as string | null,
   }
 }
+
+
 

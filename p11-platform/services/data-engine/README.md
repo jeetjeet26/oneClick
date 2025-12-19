@@ -1,5 +1,86 @@
 # P11 Data Engine
 
+ETL pipelines for marketing data ingestion AND long-running job execution for P11 Platform. Handles PropertyAudit GEO intelligence, review analysis, and more.
+
+## 🆕 New: PropertyAudit Job Execution (Dec 2025)
+
+The data-engine now handles PropertyAudit runs that previously timed out on Vercel. Features:
+
+- **No Timeout Limits** - Run unlimited queries without Vercel's 5-10 min limit
+- **Parallel Execution** - OpenAI and Claude run simultaneously (50% faster)
+- **Real-time Progress** - Track completion percentage in real-time
+- **Feature Flag Control** - Instant switch between TypeScript/Python execution
+- **Full TypeScript Parity** - Same quality results as the Next.js implementation
+
+### Quick Start (PropertyAudit)
+
+```powershell
+# Windows PowerShell
+cd p11-platform\services\data-engine
+.\start.ps1
+```
+
+Or manually:
+
+```bash
+# Set environment variables
+$env:DATA_ENGINE_API_KEY = "your-random-key"
+$env:SUPABASE_URL = "https://your-project.supabase.co"
+$env:SUPABASE_SERVICE_KEY = "your-service-key"
+$env:OPENAI_API_KEY = "sk-proj-..."
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+
+# Start server
+python main.py
+```
+
+### New Job Execution Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check with dependency status |
+| `/jobs/propertyaudit/run` | POST | Execute PropertyAudit job (async) |
+| `/jobs/propertyaudit/status/{run_id}` | GET | Check job status |
+
+### Feature Flag Configuration
+
+In `apps/web/.env.local`:
+
+```bash
+# false = TypeScript (legacy), true = Python data-engine
+PROPERTYAUDIT_USE_DATA_ENGINE=true
+DATA_ENGINE_URL=http://localhost:8000
+DATA_ENGINE_API_KEY=your-api-key-here
+```
+
+### Architecture
+
+```
+services/data-engine/
+├── main.py                 # FastAPI server + job endpoints
+├── connectors/             # LLM connectors (OpenAI, Claude)
+│   ├── openai_connector.py           # Structured mode
+│   ├── claude_connector.py           # Structured mode
+│   ├── openai_natural_connector.py   # Natural two-phase mode
+│   ├── claude_natural_connector.py   # Natural two-phase mode
+│   ├── cross_model_analyzer.py       # Cross-model analysis
+│   ├── evaluator.py                  # GEO scoring formula
+│   └── schemas.py                    # JSON schemas
+├── jobs/
+│   └── propertyaudit.py    # PropertyAudit job executor
+├── utils/
+│   ├── auth.py             # API key authentication
+│   └── config.py           # Environment loading
+├── pipelines/              # ETL pipelines (existing)
+└── scrapers/               # Web scrapers (existing)
+```
+
+See [DATA_ENGINE_MIGRATION.md](../../../docs/DATA_ENGINE_MIGRATION.md) for complete migration guide.
+
+---
+
+## ETL Pipelines (Original)
+
 ETL pipelines for marketing data ingestion. Fetches data from Meta Ads, Google Ads, and GA4, normalizes it, and loads it into Supabase.
 
 ## Quick Start

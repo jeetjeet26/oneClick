@@ -294,3 +294,5 @@ create policy "Service role has full access to geo_property_config"
   on geo_property_config for all
   using (auth.role() = 'service_role');
 
+
+

@@ -214,3 +214,5 @@ function calculateAverage(values: number[]): number | null {
   return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100
 }
 
+
+
