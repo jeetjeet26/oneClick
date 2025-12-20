@@ -102,11 +102,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
       )
     }
 
-    // First, try to parse as time series
+    // First, try to parse as time series or campaign summary
     const timeSeriesResult = parseMarketingCSV(csvContent, filename, campaignName, platform)
     
-    // If it's a time series, handle it
-    if (timeSeriesResult.success && timeSeriesResult.reportType === 'time_series') {
+    // If it's a time series or campaign summary, handle it with the time series handler
+    // (campaign_summary is structurally the same - rows of parsed marketing data)
+    if (timeSeriesResult.success && (timeSeriesResult.reportType === 'time_series' || timeSeriesResult.reportType === 'campaign_summary')) {
       return handleTimeSeriesUpload(
         supabase,
         timeSeriesResult,

@@ -34,3 +34,5 @@ COMMENT ON COLUMN geo_runs.current_query_index IS
 
 COMMENT ON COLUMN geo_runs.last_updated_at IS 
 'Timestamp of last progress update, used for detecting stalled jobs';
+
+

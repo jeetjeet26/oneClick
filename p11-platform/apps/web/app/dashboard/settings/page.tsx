@@ -365,7 +365,6 @@ export default function SettingsPage() {
                     <h4 className="text-sm font-medium text-slate-700 mb-4">Other Integrations</h4>
                     <div className="space-y-3">
                       {[
-                        { id: 'meta', label: 'Meta Ads', description: 'Facebook & Instagram advertising' },
                         { id: 'ga4', label: 'Google Analytics 4', description: 'Website analytics' },
                         { id: 'linkedin', label: 'LinkedIn Ads', description: 'Professional advertising' },
                       ].map(item => (
@@ -379,6 +378,11 @@ export default function SettingsPage() {
                           </span>
                         </div>
                       ))}
+                    </div>
+                    <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                      <p className="text-sm text-indigo-700">
+                        💡 <strong>Tip:</strong> Google Ads and Meta Ads are now supported! Switch between tabs above to link accounts.
+                      </p>
                     </div>
                   </div>
                 </div>

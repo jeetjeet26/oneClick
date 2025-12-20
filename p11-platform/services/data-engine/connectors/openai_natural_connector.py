@@ -354,3 +354,5 @@ class OpenAINaturalConnector:
                 'analysis': analyzed['envelope'].get('analysis', {})
             }
         }
+
+

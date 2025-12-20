@@ -73,6 +73,7 @@ const PLATFORM_OPTIONS: { value: MarketingPlatform; label: string; icon: string;
 // Report type labels for display
 const REPORT_TYPE_LABELS: Record<string, string> = {
   'time_series': 'Time Series (Daily)',
+  'campaign_summary': 'Campaign Summary',
   'keywords': 'Search Keywords',
   'search_terms': 'Search Terms',
   'demographics': 'Demographics',

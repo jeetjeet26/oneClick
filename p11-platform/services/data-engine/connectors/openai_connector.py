@@ -291,3 +291,5 @@ class OpenAIConnector:
                 },
                 'raw': {'error': str(e), 'model': self.model}
             }
+
+

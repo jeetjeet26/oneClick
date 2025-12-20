@@ -82,7 +82,58 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 
 ---
 
-## ✨ Latest Updates (Dec 18, 2025)
+## ✨ Latest Updates (Dec 19, 2025)
+
+### 🔌 MCP Ads Integration Complete! (Dec 19, 2025)
+**One-click marketing data sync from Google Ads and Meta Ads!**
+
+#### What Was Implemented
+
+**Store + Sync Architecture:**
+- MCP servers query live APIs (Google Ads, Meta Ads)
+- Data stored in `fact_marketing_performance` for instant dashboard queries
+- Historical trends and aggregations now possible
+- No more API rate limit issues
+
+**MultiChannel BI Auto-Import:**
+- New "Import Data" dropdown in `/dashboard/bi`
+- ✨ **Auto-Import (MCP)** - Pull from connected ad platforms with one click
+- 📄 **Upload CSV** - Manual file upload (existing)
+- Real-time progress tracking during sync
+- Automatic dashboard refresh after import
+
+**MCP Servers Reorganized:**
+- Directory structure updated for Python package compatibility
+- `google_ads/` - Google Ads MCP server (7 tools)
+- `meta_ads/` - Meta Ads MCP server (20+ tools)
+- `wordpress/` - WordPress deployment MCP server
+
+**New Files Created:**
+```
+services/data-engine/
+└── pipelines/
+    └── mcp_marketing_sync.py    # Scheduled sync pipeline
+
+apps/web/
+├── app/dashboard/bi/page.tsx   # Updated with MCP import dropdown
+├── app/api/marketvision/
+│   ├── [propertyId]/route.ts   # Property marketing data API
+│   └── import/route.ts         # MCP import trigger API
+└── components/marketvision/
+    ├── PropertyMarketingDashboard.tsx
+    └── ImportScheduleSettings.tsx
+```
+
+#### Performance Comparison
+
+| Method | Setup Time | Data Freshness | Historical Data |
+|--------|-----------|----------------|-----------------|
+| CSV Upload | 2 minutes | Manual | Unlimited |
+| MCP Auto-Import | **1 click** | **Real-time** | **Unlimited** |
+
+**Documentation:** See [MCP Ads Integration](./p11-platform/services/mcp-servers/IMPLEMENTATION_SUMMARY.md) for complete guide.
+
+---
 
 ### 🚀 Data Engine Migration - PropertyAudit Phase 1 Complete! (Dec 18, 2025)
 **Zero-downtime migration of PropertyAudit to Python data-engine with 50% faster parallel execution!**

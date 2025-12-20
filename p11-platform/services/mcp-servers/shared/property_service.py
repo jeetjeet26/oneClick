@@ -17,22 +17,19 @@ async def get_ad_account_for_property(
     property_id: str,
     platform: str  # 'google_ads' or 'meta_ads'
 ) -> Optional[str]:
-    """Get the ad account ID linked to a property."""
+    """Get the ad account ID linked to a property (uses EXISTING schema)."""
     supabase = get_supabase()
     
-    field_map = {
-        'google_ads': 'google_ads_customer_id',
-        'meta_ads': 'meta_ad_account_id'
-    }
-    
     result = supabase.table('ad_account_connections')\
-        .select(field_map[platform])\
+        .select('account_id')\
         .eq('property_id', property_id)\
+        .eq('platform', platform)\
+        .eq('is_active', True)\
         .limit(1)\
         .execute()
     
     if result.data:
-        return result.data[0].get(field_map[platform])
+        return result.data[0].get('account_id')
     return None
 
 async def get_properties_for_org(org_id: str) -> list[dict]:
@@ -68,6 +65,8 @@ async def resolve_property_to_ad_account(
     ad_account_id = await get_ad_account_for_property(property_id, platform)
     
     return property_id, ad_account_id
+
+
 
 
 

@@ -272,3 +272,5 @@ def aggregate_scores(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         'avg_link_rank': round(sum(link_ranks) / len(link_ranks), 2) if link_ranks else None,
         'avg_sov': round(sum(sovs) / len(sovs), 4) if sovs else None
     }
+
+

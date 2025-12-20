@@ -79,6 +79,27 @@ See [DATA_ENGINE_MIGRATION.md](../../../docs/DATA_ENGINE_MIGRATION.md) for compl
 
 ---
 
+## 🆕 New: MCP Marketing Sync (Dec 2025)
+
+Sync marketing data from Google Ads and Meta Ads via MCP servers:
+
+```powershell
+# Sync all linked properties
+python -m pipelines.mcp_marketing_sync --all --date-range LAST_7_DAYS
+
+# Sync specific property
+python -m pipelines.mcp_marketing_sync --property-id "abc-123" --date-range LAST_30_DAYS
+```
+
+Data flows:
+1. MCP servers query live APIs (Google Ads, Meta Ads)
+2. Results stored in `fact_marketing_performance` table
+3. Dashboard queries database (instant, no API calls)
+
+This enables historical trends, aggregations, and fast dashboard loads.
+
+---
+
 ## ETL Pipelines (Original)
 
 ETL pipelines for marketing data ingestion. Fetches data from Meta Ads, Google Ads, and GA4, normalizes it, and loads it into Supabase.

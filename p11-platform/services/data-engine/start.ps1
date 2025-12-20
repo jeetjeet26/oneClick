@@ -20,3 +20,5 @@ Write-Host ""
 
 # Start server
 & $pythonPath main.py
+
+

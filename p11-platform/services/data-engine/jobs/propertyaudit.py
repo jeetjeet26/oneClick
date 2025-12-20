@@ -411,3 +411,5 @@ class PropertyAuditExecutor:
             'breakdown': aggregate.get('breakdown', {}),
             'query_scores': query_scores
         }).execute()
+
+

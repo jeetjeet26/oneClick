@@ -39,3 +39,5 @@ def format_campaign_row(campaign: dict) -> str:
 
 
 
+
+

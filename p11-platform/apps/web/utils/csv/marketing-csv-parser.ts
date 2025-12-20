@@ -528,6 +528,141 @@ export function parseExtendedReport(
 }
 
 /**
+ * Skip metadata rows in Google Ads exports (title row, date range row)
+ * Returns the index of the actual header row
+ */
+function findHeaderRowIndex(rows: string[][]): number {
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const row = rows[i]
+    // Look for common header columns
+    const rowLower = row.map(c => c.toLowerCase())
+    if (rowLower.includes('clicks') || rowLower.includes('cost') || 
+        rowLower.includes('impressions') || rowLower.includes('impr.') ||
+        rowLower.includes('campaign') || rowLower.includes('ad group')) {
+      return i
+    }
+  }
+  return 0 // Default to first row
+}
+
+/**
+ * Extract date range from Google Ads metadata row
+ * e.g., "November 13, 2024 - December 10, 2025"
+ */
+function extractDateRangeFromMetadata(rows: string[][]): { start: string; end: string } | null {
+  for (let i = 0; i < Math.min(rows.length, 3); i++) {
+    const rowText = rows[i].join(' ')
+    // Match "Month DD, YYYY - Month DD, YYYY"
+    const match = rowText.match(/([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})\s*[-–]\s*([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/)
+    if (match) {
+      const months: Record<string, string> = {
+        'January': '01', 'February': '02', 'March': '03', 'April': '04',
+        'May': '05', 'June': '06', 'July': '07', 'August': '08',
+        'September': '09', 'October': '10', 'November': '11', 'December': '12'
+      }
+      const startMonth = months[match[1]] || '01'
+      const endMonth = months[match[4]] || '12'
+      return {
+        start: `${match[3]}-${startMonth}-${match[2].padStart(2, '0')}`,
+        end: `${match[6]}-${endMonth}-${match[5].padStart(2, '0')}`
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Normalize Google Ads column headers
+ */
+function normalizeHeaders(headers: string[]): string[] {
+  const mapping: Record<string, string> = {
+    'impr.': 'impressions',
+    'conv.': 'conversions',
+    'conv. rate': 'conversion_rate',
+    'cost / conv.': 'cost_per_conversion',
+    'avg. cpc': 'avg_cpc',
+    'ctr': 'ctr',
+  }
+  
+  return headers.map(h => {
+    const lower = h.toLowerCase()
+    return mapping[lower] || lower
+  })
+}
+
+/**
+ * Parse Google Ads Campaign Summary (no date column, campaign-level aggregates)
+ */
+function parseGoogleAdsCampaignSummary(
+  headers: string[],
+  rows: string[][],
+  dateRange: { start: string; end: string } | null
+): CSVParseResult {
+  const result: CSVParseResult = {
+    success: true,
+    platform: 'google_ads',
+    reportType: 'campaign_summary',
+    rows: [],
+    dateRange,
+    errors: [],
+    warnings: []
+  }
+  
+  // Normalize headers for matching
+  const normalizedHeaders = normalizeHeaders(headers)
+  const colIndex: Record<string, number> = {}
+  normalizedHeaders.forEach((h, i) => {
+    colIndex[h] = i
+  })
+  
+  // Find relevant columns
+  const campaignIdx = colIndex['campaign'] ?? colIndex['campaign name'] ?? -1
+  const clicksIdx = colIndex['clicks'] ?? -1
+  const impressionsIdx = colIndex['impressions'] ?? -1
+  const costIdx = colIndex['cost'] ?? colIndex['cost (converted currency)'] ?? -1
+  const conversionsIdx = colIndex['conversions'] ?? -1
+  
+  if (campaignIdx === -1) {
+    result.success = false
+    result.errors.push('Missing required column: Campaign')
+    return result
+  }
+  
+  // Use end date of range or today for the record date
+  const recordDate = dateRange?.end || new Date().toISOString().substring(0, 10)
+  
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    if (row.length === 0 || row.every(cell => !cell.trim())) continue
+    
+    const campaignName = row[campaignIdx]
+    if (!campaignName || campaignName.toLowerCase() === 'total') continue
+    
+    const campaignId = generateCampaignId(campaignName, dateRange)
+    
+    const parsed: ParsedMarketingRow = {
+      date: recordDate,
+      channel_id: 'google_ads',
+      campaign_name: campaignName,
+      campaign_id: campaignId,
+      impressions: impressionsIdx !== -1 ? parseNumber(row[impressionsIdx]) : 0,
+      clicks: clicksIdx !== -1 ? parseNumber(row[clicksIdx]) : 0,
+      spend: costIdx !== -1 ? parseCurrency(row[costIdx]) : 0,
+      conversions: conversionsIdx !== -1 ? parseNumber(row[conversionsIdx]) : 0
+    }
+    
+    result.rows.push(parsed)
+  }
+  
+  if (result.rows.length === 0) {
+    result.success = false
+    result.errors.push('No valid campaign data rows found')
+  }
+  
+  return result
+}
+
+/**
  * Main parsing function for time series data
  */
 export function parseMarketingCSV(
@@ -550,11 +685,26 @@ export function parseMarketingCSV(
     }
   }
   
-  const headers = allRows[0]
-  const dataRows = allRows.slice(1).filter(row => row.length > 0 && row.some(cell => cell.trim()))
+  // Handle Google Ads exports with metadata rows (title, date range)
+  const headerRowIndex = findHeaderRowIndex(allRows)
+  const headers = allRows[headerRowIndex]
+  const dataRows = allRows.slice(headerRowIndex + 1).filter(row => row.length > 0 && row.some(cell => cell.trim()))
+  
+  // Try to extract date range from metadata rows or filename
+  let dateRange = extractDateRangeFromFilename(filename) || extractDateRangeFromMetadata(allRows.slice(0, headerRowIndex))
+  
   const reportType = detectReportType(headers)
   const platform = platformHint || detectPlatform(headers, dataRows)
-  const dateRange = extractDateRangeFromFilename(filename)
+  
+  // Check if this is a campaign summary (no date column but has campaign column)
+  const normalizedHeaders = normalizeHeaders(headers)
+  const hasDateColumn = normalizedHeaders.includes('date')
+  const hasCampaignColumn = normalizedHeaders.includes('campaign') || normalizedHeaders.includes('campaign name')
+  
+  if (!hasDateColumn && hasCampaignColumn) {
+    // This is a campaign summary report
+    return parseGoogleAdsCampaignSummary(headers, dataRows, dateRange)
+  }
   
   // Only handle time_series in the main parser
   if (reportType !== 'time_series') {

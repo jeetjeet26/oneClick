@@ -1,6 +1,12 @@
 # MCP Ads Integration Servers
 
-Custom MCP servers for Google Ads and Meta Ads management, integrated with P11 Platform.
+Custom MCP servers for Google Ads, Meta Ads, and WordPress management, integrated with P11 Platform.
+
+## 🆕 December 2025 Updates
+
+- **Store + Sync Architecture**: MCP queries live APIs, data stored in DB for fast dashboard queries
+- **MultiChannel BI Integration**: One-click import from `/dashboard/bi`
+- **Directory Reorganization**: Python package-compatible naming (`google_ads`, `meta_ads`)
 
 ## 🚀 Quick Start
 
@@ -8,13 +14,19 @@ Custom MCP servers for Google Ads and Meta Ads management, integrated with P11 P
 
 ```powershell
 # Google Ads
-cd google-ads
+cd google_ads
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
 
 # Meta Ads
-cd ../meta-ads
+cd ../meta_ads
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+
+# WordPress (SiteForge deployment)
+cd ../wordpress
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
@@ -73,7 +85,7 @@ mcp-servers/
 │   ├── property_service.py    # Property lookups
 │   └── formatters.py          # Output formatting
 │
-├── google-ads/                 # Google Ads MCP Server
+├── google_ads/                 # Google Ads MCP Server
 │   ├── config.py
 │   ├── auth.py
 │   ├── server.py
@@ -85,12 +97,25 @@ mcp-servers/
 │       ├── performance.py
 │       └── property_context.py
 │
-└── meta-ads/                   # Meta Ads MCP Server
+├── meta_ads/                   # Meta Ads MCP Server
+│   ├── config.py
+│   ├── client.py
+│   ├── server.py
+│   ├── __main__.py
+│   ├── requirements.txt
+│   └── tools/
+│       └── __init__.py
+│
+└── wordpress/                  # WordPress MCP Server (SiteForge)
     ├── config.py
-    ├── client.py
+    ├── cloudways_client.py
     ├── server.py
     ├── __main__.py
-    └── requirements.txt
+    ├── requirements.txt
+    └── tools/
+        ├── abilities.py
+        ├── analysis.py
+        └── deployment.py
 ```
 
 ## 🔧 Tools Available
@@ -112,6 +137,12 @@ mcp-servers/
 - Targeting tools (6 tools)
 - Pages & assets (4 tools)
 - Insights (1 tool)
+
+### WordPress (SiteForge)
+- `list_wordpress_sites` - List managed WordPress sites
+- `get_site_status` - Check site health and status
+- `deploy_site_content` - Deploy generated content to WordPress
+- `analyze_site_structure` - Analyze existing site for migration
 
 ## 📊 Usage Examples
 
@@ -142,6 +173,18 @@ accounts = await list_accounts()
 from meta_ads.client import MetaAdsClient
 client = MetaAdsClient()
 accounts = await client.get_ad_accounts()
+
+# Test WordPress
+from wordpress.tools.analysis import analyze_site
+result = await analyze_site("https://example.com")
+```
+
+### Via Data Engine Sync
+
+```powershell
+# Sync all linked properties (runs MCP tools and stores data)
+cd p11-platform/services/data-engine
+python -m pipelines.mcp_marketing_sync --all --date-range LAST_7_DAYS
 ```
 
 ## 🗄️ Database
@@ -192,6 +235,8 @@ This creates:
 - [Google Ads API](https://developers.google.com/google-ads/api/docs/start)
 - [Meta Marketing API](https://developers.facebook.com/docs/marketing-apis)
 - [meta-ads-mcp inspiration](https://github.com/pipeboard-co/meta-ads-mcp)
+
+
 
 
 

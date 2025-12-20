@@ -32,7 +32,11 @@ import {
   ChevronDown,
   ChevronUp,
   Table,
-  Upload
+  Upload,
+  Download,
+  Loader2,
+  CheckCircle,
+  XCircle
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -124,6 +128,16 @@ type CampaignsData = {
   }
 }
 
+interface ImportJob {
+  id: string
+  status: 'pending' | 'running' | 'complete' | 'failed'
+  progress_pct: number
+  current_step: string
+  records_imported: number
+  campaigns_found: number
+  error_message?: string
+}
+
 export default function MultiChannelBIPage() {
   const { currentProperty } = usePropertyContext()
   const [dateRange, setDateRange] = useState<DateRange>(DATE_PRESETS[2]) // Last 30 days
@@ -137,6 +151,11 @@ export default function MultiChannelBIPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  
+  // MCP Import state
+  const [importing, setImporting] = useState(false)
+  const [importJob, setImportJob] = useState<ImportJob | null>(null)
+  const [showImportMenu, setShowImportMenu] = useState(false)
 
   const fetchData = useCallback(async () => {
     if (!currentProperty?.id) return
@@ -195,6 +214,108 @@ export default function MultiChannelBIPage() {
     }
   }, [currentProperty?.id, dateRange])
 
+  const triggerMCPImport = async () => {
+    // #region agent log
+    const logUrl = 'http://127.0.0.1:7242/ingest/63d68c0c-bf60-432a-9849-1fe55b783323';
+    const log = (msg: string, data: Record<string, unknown>, hId: string) => fetch(logUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bi/page.tsx:triggerMCPImport',message:msg,data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:hId})}).catch(()=>{});
+    // #endregion
+
+    if (!currentProperty?.id) return
+    
+    // #region agent log
+    log('triggerMCPImport called', { propertyId: currentProperty.id }, 'H1');
+    // #endregion
+    
+    setImporting(true)
+    setImportJob(null)
+    setShowImportMenu(false)
+    
+    try {
+      // #region agent log
+      log('Calling /api/marketvision/import', { propertyId: currentProperty.id }, 'H1');
+      // #endregion
+      
+      const response = await fetch('/api/marketvision/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          property_id: currentProperty.id,
+          channels: ['google_ads', 'meta_ads'],
+          date_range: 'LAST_30_DAYS',
+        }),
+      })
+
+      // #region agent log
+      log('API response received', { status: response.status, ok: response.ok }, 'H3');
+      // #endregion
+
+      const responseText = await response.text();
+      
+      // #region agent log
+      log('Response text', { length: responseText.length, preview: responseText.slice(0, 300) }, 'H4');
+      // #endregion
+
+      if (!responseText) {
+        throw new Error('Empty response from server');
+      }
+
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        // #region agent log
+        log('JSON parse failed', { responseText: responseText.slice(0, 500) }, 'H4');
+        // #endregion
+        throw new Error(`Invalid JSON response: ${responseText.slice(0, 100)}`);
+      }
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to start import')
+      }
+
+      const jobId = result.job_id
+      
+      // Poll for status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/marketvision/import?job_id=${jobId}`)
+          const statusData = await statusRes.json()
+          
+          if (statusData.job) {
+            setImportJob(statusData.job)
+            
+            if (statusData.job.status === 'complete' || statusData.job.status === 'failed') {
+              clearInterval(pollInterval)
+              setImporting(false)
+              
+              // Refresh data
+              if (statusData.job.status === 'complete') {
+                await fetchData()
+                if (showCampaigns) await fetchCampaigns()
+              }
+              
+              setTimeout(() => setImportJob(null), 5000)
+            }
+          }
+        } catch (error) {
+          console.error('Status poll error:', error)
+          clearInterval(pollInterval)
+          setImporting(false)
+        }
+      }, 2000)
+
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        setImporting(false)
+      }, 300000)
+
+    } catch (error) {
+      console.error('Import error:', error)
+      setImporting(false)
+      setError(error instanceof Error ? error.message : 'Failed to start import')
+    }
+  }
+
   useEffect(() => {
     fetchData()
   }, [fetchData])
@@ -214,6 +335,15 @@ export default function MultiChannelBIPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange])
+  
+  // Close import menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setShowImportMenu(false)
+    if (showImportMenu) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showImportMenu])
 
   // Get period-over-period changes from actual data
   const periodChanges = data?.comparison?.changes ?? null
@@ -297,14 +427,61 @@ export default function MultiChannelBIPage() {
             <span className="hidden sm:inline">Compare</span>
           </button>
           <DateRangePicker value={dateRange} onChange={setDateRange} />
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
-            title="Import CSV data from Google Ads or Meta"
-          >
-            <Upload size={16} />
-            <span className="hidden sm:inline">Import</span>
-          </button>
+          
+          {/* Import Dropdown */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowImportMenu(!showImportMenu)
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+              disabled={importing}
+            >
+              {importing ? (
+                <><Loader2 size={16} className="animate-spin" /> Importing...</>
+              ) : (
+                <><Download size={16} /> <span className="hidden sm:inline">Import Data</span></>
+              )}
+              <ChevronDown size={14} />
+            </button>
+            
+            {showImportMenu && !importing && (
+              <div 
+                className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={triggerMCPImport}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
+                >
+                  <div className="p-1.5 bg-emerald-100 rounded">
+                    <Download size={14} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Auto-Import (MCP)</p>
+                    <p className="text-xs text-slate-500">Pull from connected ad platforms</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowImportMenu(false)
+                    setShowUploadModal(true)
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
+                >
+                  <div className="p-1.5 bg-blue-100 rounded">
+                    <Upload size={14} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Upload CSV</p>
+                    <p className="text-xs text-slate-500">Manual file upload</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+          
           <ExportButton 
             getData={getExportData}
             disabled={!hasData || loading}
@@ -327,6 +504,48 @@ export default function MultiChannelBIPage() {
           </button>
         </div>
       </div>
+      
+      {/* MCP Import Progress Banner */}
+      {importJob && (
+        <div className={`rounded-lg border-2 p-4 ${
+          importJob.status === 'complete' ? 'border-green-500 bg-green-50' :
+          importJob.status === 'failed' ? 'border-red-500 bg-red-50' :
+          'border-indigo-500 bg-indigo-50'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              {importJob.status === 'running' && (
+                <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+              )}
+              {importJob.status === 'complete' && (
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              )}
+              {importJob.status === 'failed' && (
+                <XCircle className="h-4 w-4 text-red-600" />
+              )}
+              <span className="font-medium text-sm">
+                {importJob.status === 'running' && `${importJob.current_step || 'Processing'}...`}
+                {importJob.status === 'complete' && `✅ Import complete! ${importJob.records_imported} records imported`}
+                {importJob.status === 'failed' && `❌ Import failed: ${importJob.error_message}`}
+              </span>
+            </div>
+            <span className="text-sm font-medium">{importJob.progress_pct}%</span>
+          </div>
+          {importJob.status === 'running' && (
+            <div className="w-full bg-white rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-indigo-600 h-full transition-all duration-500"
+                style={{ width: `${importJob.progress_pct}%` }}
+              />
+            </div>
+          )}
+          {importJob.status === 'complete' && (
+            <p className="text-sm text-green-700 mt-1">
+              {importJob.campaigns_found} campaigns synced · Data refreshed automatically
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Comparison Period Info */}
       {compareEnabled && data?.comparison?.previousPeriod && (
