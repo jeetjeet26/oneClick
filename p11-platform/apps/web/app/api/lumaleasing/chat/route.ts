@@ -213,20 +213,22 @@ Write a professional CRM note (no bullet points, just flowing text):`;
           }
 
           // Sync lead to CRM (if configured)
-          try {
-            const crmResult = await syncLeadToCRM(propertyId, leadId, {
-              first_name: leadData.first_name || undefined,
-              last_name: leadData.last_name || undefined,
-              email: leadData.email || undefined,
-              phone: leadData.phone || undefined,
-              source: 'LumaLeasing Widget',
-              status: 'new',
-              notes: leadNotes,
-            });
-            console.log('[LumaLeasing] CRM sync result:', crmResult.action);
-          } catch (crmError) {
-            console.error('[LumaLeasing] CRM sync failed (non-blocking):', crmError);
-            // CRM sync failures should not block the chat flow
+          if (leadId) {
+            try {
+              const crmResult = await syncLeadToCRM(propertyId, leadId, {
+                first_name: leadData.first_name || undefined,
+                last_name: leadData.last_name || undefined,
+                email: leadData.email || undefined,
+                phone: leadData.phone || undefined,
+                source: 'LumaLeasing Widget',
+                status: 'new',
+                notes: leadNotes,
+              });
+              console.log('[LumaLeasing] CRM sync result:', crmResult.action);
+            } catch (crmError) {
+              console.error('[LumaLeasing] CRM sync failed (non-blocking):', crmError);
+              // CRM sync failures should not block the chat flow
+            }
           }
 
           // Update session and conversation with lead
