@@ -12,8 +12,14 @@ import {
   Check,
   Loader2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Database,
+  ChevronRight,
+  CheckCircle2
 } from 'lucide-react'
+import Link from 'next/link'
+import { createClient } from '@/utils/supabase/client'
+import { usePropertyContext } from '@/components/layout/PropertyContext'
 import { ScheduledReportsList } from '@/components/settings/ScheduledReportsList'
 import { AdAccountConnections } from '@/components/settings/AdAccountConnections'
 
@@ -60,11 +66,14 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 }
 
 export default function SettingsPage() {
+  const { currentProperty } = usePropertyContext()
+  const supabase = createClient()
   const [activeSection, setActiveSection] = useState<SettingsSection>('organization')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [crmIntegration, setCrmIntegration] = useState<{ platform: string; status: string } | null>(null)
   
   // Form state
   const [orgName, setOrgName] = useState('')
@@ -98,12 +107,25 @@ export default function SettingsPage() {
       })
       setTheme(settings.preferences?.theme || 'light')
       setAccentColor(settings.preferences?.accent_color || 'indigo')
+
+      // Check for CRM integration
+      if (currentProperty?.id) {
+        const { data: crmData } = await supabase
+          .from('integration_credentials')
+          .select('platform, status')
+          .eq('property_id', currentProperty.id)
+          .in('platform', ['yardi', 'realpage', 'salesforce', 'hubspot'])
+          .eq('status', 'connected')
+          .single()
+        
+        setCrmIntegration(crmData)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentProperty?.id, supabase])
 
   useEffect(() => {
     fetchSettings()
@@ -360,8 +382,49 @@ export default function SettingsPage() {
                 <div className="p-6">
                   <AdAccountConnections />
                   
-                  {/* Other Integrations - Coming Soon */}
+                  {/* CRM Integration */}
                   <div className="mt-8 pt-6 border-t border-slate-200">
+                    <h4 className="text-sm font-medium text-slate-700 mb-4">CRM Integration</h4>
+                    <Link href="/dashboard/settings/crm">
+                      <div className={`flex items-center justify-between py-3 px-4 rounded-lg transition-all cursor-pointer group border ${
+                        crmIntegration 
+                          ? 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-gradient-to-r from-teal-50 to-emerald-50 border-teal-200 hover:from-teal-100 hover:to-emerald-100'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${
+                            crmIntegration 
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-teal-500 text-white'
+                          }`}>
+                            <Database size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-slate-900">
+                                {crmIntegration ? 'CRM Connected' : 'CRM Sync Setup'}
+                              </p>
+                              {crmIntegration && (
+                                <CheckCircle2 className="text-emerald-600" size={16} />
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-600">
+                              {crmIntegration 
+                                ? `${crmIntegration.platform.charAt(0).toUpperCase() + crmIntegration.platform.slice(1)} • Active`
+                                : 'Connect Yardi, RealPage, Salesforce, or HubSpot'
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className={`group-hover:translate-x-1 transition-transform ${
+                          crmIntegration ? 'text-emerald-600' : 'text-teal-600'
+                        }`} size={20} />
+                      </div>
+                    </Link>
+                  </div>
+                  
+                  {/* Other Integrations - Coming Soon */}
+                  <div className="mt-6">
                     <h4 className="text-sm font-medium text-slate-700 mb-4">Other Integrations</h4>
                     <div className="space-y-3">
                       {[

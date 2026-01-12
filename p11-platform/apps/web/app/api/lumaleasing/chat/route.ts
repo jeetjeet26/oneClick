@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/admin';
 import { sendEmail } from '@/utils/services/messaging';
+import { syncLeadToCRM } from '@/utils/services/crm-sync';
 import OpenAI from 'openai';
 
 // Type for extracted conversation data
@@ -209,6 +210,23 @@ Write a professional CRM note (no bullet points, just flowing text):`;
             }
           } catch (scoreError) {
             console.error('[LumaLeasing] Failed to score lead:', scoreError);
+          }
+
+          // Sync lead to CRM (if configured)
+          try {
+            const crmResult = await syncLeadToCRM(propertyId, leadId, {
+              first_name: leadData.first_name || undefined,
+              last_name: leadData.last_name || undefined,
+              email: leadData.email || undefined,
+              phone: leadData.phone || undefined,
+              source: 'LumaLeasing Widget',
+              status: 'new',
+              notes: leadNotes,
+            });
+            console.log('[LumaLeasing] CRM sync result:', crmResult.action);
+          } catch (crmError) {
+            console.error('[LumaLeasing] CRM sync failed (non-blocking):', crmError);
+            // CRM sync failures should not block the chat flow
           }
 
           // Update session and conversation with lead
@@ -483,6 +501,23 @@ export async function POST(req: NextRequest) {
           .single();
 
         leadId = newLead?.id;
+
+        // Sync new lead to CRM (if configured)
+        if (leadId) {
+          try {
+            const crmResult = await syncLeadToCRM(propertyId, leadId, {
+              first_name: leadInfo.first_name || undefined,
+              last_name: leadInfo.last_name || undefined,
+              email: leadInfo.email || undefined,
+              phone: leadInfo.phone || undefined,
+              source: 'LumaLeasing Widget',
+              status: 'new',
+            });
+            console.log('[LumaLeasing] CRM sync for direct lead:', crmResult.action);
+          } catch (crmError) {
+            console.error('[LumaLeasing] CRM sync failed (non-blocking):', crmError);
+          }
+        }
       }
 
       // Update session with lead
