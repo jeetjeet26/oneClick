@@ -11,7 +11,15 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 
+# Import routers
+from routers.brand_intelligence import router as brand_intelligence_router
+from routers.crm_integration import router as crm_integration_router
+
 app = FastAPI(title="P11 Data Engine", version="1.0.0")
+
+# Mount routers
+app.include_router(brand_intelligence_router)
+app.include_router(crm_integration_router)
 
 # CORS middleware
 app.add_middleware(
@@ -165,6 +173,24 @@ async def root():
             "sync_property": "POST /sync-marketing-data",
             "sync_all": "POST /sync-all-properties",
             "job_status": "GET /import-jobs/{job_id}",
+            "brand_intelligence": {
+                "get_for_property": "GET /scraper/brand-intelligence/property/{property_id}",
+                "get_for_competitor": "GET /scraper/brand-intelligence/competitor/{competitor_id}",
+                "trigger_extraction": "POST /scraper/brand-intelligence",
+                "batch_extraction": "POST /scraper/brand-intelligence/batch",
+                "job_status": "GET /scraper/brand-intelligence/job/{job_id}",
+                "search": "POST /scraper/brand-intelligence/search"
+            },
+            "crm_integration": {
+                "test_connection": "POST /crm/test-connection",
+                "discover_schema": "POST /crm/discover-schema",
+                "search_lead": "POST /crm/search-lead",
+                "push_lead": "POST /crm/push-lead",
+                "validate_mapping": "POST /crm/validate-mapping",
+                "save_mapping": "POST /crm/save-mapping",
+                "learned_patterns": "GET /crm/learned-patterns/{crm_type}",
+                "tourspark_schema": "GET /crm/tourspark-schema"
+            }
         }
     }
 

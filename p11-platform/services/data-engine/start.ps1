@@ -22,3 +22,7 @@ Write-Host ""
 & $pythonPath main.py
 
 
+
+
+
+

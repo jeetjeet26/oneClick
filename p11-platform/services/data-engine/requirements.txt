@@ -32,3 +32,8 @@ geopy
 
 # Google Maps / Places API
 googlemaps
+
+# CRM Integrations
+simple-salesforce  # Salesforce REST API
+hubspot-api-client  # HubSpot API
+xmltodict  # For Yardi Voyager SOAP (if needed)
