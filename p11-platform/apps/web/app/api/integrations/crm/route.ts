@@ -51,7 +51,7 @@ async function callDataEngine(
  * Verify user has access to the property
  */
 async function verifyPropertyAccess(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   propertyId: string,
   userId: string
 ): Promise<boolean> {
