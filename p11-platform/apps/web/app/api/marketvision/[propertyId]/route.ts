@@ -17,7 +17,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ propertyId: string }> }
 ) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { propertyId } = await params;
   
   const searchParams = request.nextUrl.searchParams;
