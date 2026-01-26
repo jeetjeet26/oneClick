@@ -75,7 +75,7 @@ const PLATFORMS = [
     bgColor: 'bg-blue-700',
     textColor: 'text-blue-700',
     description: 'Share updates on LinkedIn',
-    available: false, // Coming soon
+    available: true,
     configPlatform: 'linkedin'
   },
   {
