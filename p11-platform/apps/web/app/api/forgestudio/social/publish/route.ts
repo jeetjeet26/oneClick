@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
           case 'facebook':
             result = await publishToFacebook(connection, draft)
             break
+          case 'linkedin':
+            result = await publishToLinkedIn(connection, draft)
+            break
           default:
             throw new Error(`Unsupported platform: ${connection.platform}`)
         }
@@ -269,6 +272,71 @@ async function publishToFacebook(
   return {
     postId: data.id || data.post_id,
     postUrl: `https://www.facebook.com/${data.id || data.post_id}`
+  }
+}
+
+// Publish to LinkedIn
+async function publishToLinkedIn(
+  connection: {
+    account_id: string
+    access_token: string
+  },
+  draft: {
+    caption: string
+    hashtags: string[]
+    media_urls: string[]
+    media_type: string
+  }
+): Promise<{ postId: string; postUrl: string }> {
+  const { account_id, access_token } = connection
+  const text = `${draft.caption}\n\n${draft.hashtags.map(h => `#${h}`).join(' ')}`
+
+  // LinkedIn v2 API - UGC Posts
+  const postData: any = {
+    author: `urn:li:person:${account_id}`,
+    lifecycleState: 'PUBLISHED',
+    specificContent: {
+      'com.linkedin.ugc.ShareContent': {
+        shareCommentary: {
+          text
+        },
+        shareMediaCategory: draft.media_urls?.length && draft.media_type === 'image' ? 'IMAGE' : 'NONE'
+      }
+    },
+    visibility: {
+      'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
+    }
+  }
+
+  // If there's an image, add it (LinkedIn requires image to be uploaded first for proper support)
+  // For MVP, we'll use external image URL (works for most cases)
+  if (draft.media_urls?.length && draft.media_type === 'image') {
+    postData.specificContent['com.linkedin.ugc.ShareContent'].media = [{
+      status: 'READY',
+      originalUrl: draft.media_urls[0]
+    }]
+  }
+
+  const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${access_token}`,
+      'Content-Type': 'application/json',
+      'X-Restli-Protocol-Version': '2.0.0'
+    },
+    body: JSON.stringify(postData)
+  })
+
+  const data = await res.json()
+
+  if (!res.ok || data.error) {
+    throw new Error(data.message || data.error || 'Failed to publish to LinkedIn')
+  }
+
+  const postId = data.id
+  return {
+    postId,
+    postUrl: `https://www.linkedin.com/feed/update/${postId}/`
   }
 }
 

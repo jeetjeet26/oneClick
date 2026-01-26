@@ -50,9 +50,34 @@ export function LumaLeasingConfig() {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'branding' | 'behavior' | 'leads' | 'tours' | 'embed'>('branding');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [calendarStatus, setCalendarStatus] = useState<{
+    connected: boolean;
+    email?: string;
+    status?: string;
+    lastCheck?: string;
+  } | null>(null);
 
   useEffect(() => {
     loadConfig();
+    loadCalendarStatus();
+    
+    // Check for OAuth callback success/error in URL params
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const success = params.get('success');
+      const error = params.get('error');
+      const email = params.get('email');
+      
+      if (success === 'calendar_connected' && email) {
+        alert(`Google Calendar connected successfully! (${email})`);
+        loadCalendarStatus();
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (error) {
+        alert(`Failed to connect Google Calendar: ${error}`);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
   }, [currentProperty.id]);
 
   const loadConfig = async () => {
@@ -65,6 +90,18 @@ export function LumaLeasingConfig() {
       console.error('Failed to load config:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCalendarStatus = async () => {
+    try {
+      const res = await fetch(`/api/lumaleasing/calendar/status?propertyId=${currentProperty.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCalendarStatus(data);
+      }
+    } catch (error) {
+      console.error('Failed to load calendar status:', error);
     }
   };
 
@@ -446,6 +483,77 @@ export function LumaLeasingConfig() {
         {/* Tours Tab */}
         {activeTab === 'tours' && (
           <div className="space-y-6 max-w-2xl">
+            {/* Google Calendar Integration Card */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-indigo-100 rounded-xl p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0">
+                  <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center">
+                    <Calendar className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">Google Calendar Integration</h3>
+                  <p className="text-sm text-slate-600 mb-4">
+                    Connect your Google Calendar to show real-time availability in the widget. 
+                    Tours will automatically appear in your calendar.
+                  </p>
+                  
+                  {calendarStatus?.connected ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm bg-white/50 rounded-lg p-3">
+                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        <div>
+                          <div className="font-medium text-slate-900">{calendarStatus.email}</div>
+                          <div className="text-xs text-slate-600">
+                            Status: <span className={`font-medium ${
+                              calendarStatus.status === 'healthy' ? 'text-green-600' :
+                              calendarStatus.status === 'expiring_soon' ? 'text-yellow-600' :
+                              'text-red-600'
+                            }`}>{calendarStatus.status}</span>
+                            {calendarStatus.lastCheck && (
+                              <span> • Last checked: {new Date(calendarStatus.lastCheck).toLocaleString()}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {calendarStatus.status !== 'healthy' && (
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className="w-5 h-5 text-amber-600" />
+                          <div className="flex-1">
+                            <p className="text-sm text-amber-900 font-medium">Action Required</p>
+                            <p className="text-xs text-amber-700">Your calendar needs to be reconnected</p>
+                          </div>
+                          <button
+                            onClick={() => window.location.href = `/api/lumaleasing/calendar/connect?propertyId=${currentProperty.id}`}
+                            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            Reconnect
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => window.location.href = `/api/lumaleasing/calendar/connect?propertyId=${currentProperty.id}`}
+                      className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      <Calendar className="w-4 h-4" />
+                      Connect Google Calendar
+                    </button>
+                  )}
+                  
+                  {!calendarStatus?.connected && (
+                    <p className="text-xs text-slate-500 mt-3">
+                      💡 Without calendar integration, tour availability will be based on static time slots.
+                      Connect your calendar for real-time availability.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tour Settings */}
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
               <div>
                 <p className="font-medium text-slate-900">Enable Tour Booking</p>

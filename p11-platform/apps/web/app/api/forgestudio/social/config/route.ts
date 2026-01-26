@@ -212,9 +212,39 @@ export async function getMetaCredentials(propertyId: string): Promise<{
   return null
 }
 
+// Helper function to get LinkedIn credentials
+export async function getLinkedInCredentials(propertyId: string): Promise<{
+  appId: string
+  appSecret: string
+  source: 'database' | 'environment'
+} | null> {
+  // First check database
+  const { data } = await supabase
+    .from('social_auth_configs')
+    .select('app_id, app_secret_encrypted')
+    .eq('property_id', propertyId)
+    .eq('platform', 'linkedin')
+    .single()
 
+  if (data) {
+    return {
+      appId: data.app_id,
+      appSecret: decrypt(data.app_secret_encrypted),
+      source: 'database'
+    }
+  }
 
+  // Fallback to environment variables (for development)
+  if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
+    return {
+      appId: process.env.LINKEDIN_CLIENT_ID,
+      appSecret: process.env.LINKEDIN_CLIENT_SECRET,
+      source: 'environment'
+    }
+  }
 
+  return null
+}
 
 
 

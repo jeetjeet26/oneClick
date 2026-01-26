@@ -1,0 +1,54 @@
+services:
+  # Main FastAPI Web Service
+  - type: web
+    name: p11-data-engine
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    
+    envVars:
+      # Supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      
+      # Google Calendar OAuth
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      
+      # OpenAI & Anthropic
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      
+      # Google Cloud (for Vertex AI)
+      - key: GOOGLE_CLOUD_PROJECT_ID
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false
+      
+      # Data Engine API Key
+      - key: DATA_ENGINE_API_KEY
+        sync: false
+      
+      # CRM Integrations (optional)
+      - key: SALESFORCE_CLIENT_ID
+        sync: false
+      - key: SALESFORCE_CLIENT_SECRET
+        sync: false
+      - key: HUBSPOT_API_KEY
+        sync: false
+    
+    # Cron Jobs
+    jobs:
+      # Google Calendar Token Health Monitor
+      # Runs every 6 hours to refresh OAuth tokens proactively
+      - name: calendar-health-monitor
+        schedule: "0 */6 * * *"
+        command: python jobs/google_calendar_health_monitor.py
