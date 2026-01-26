@@ -8,7 +8,7 @@ import { createClient } from '@/utils/supabase/server'
 import { createServiceClient } from '@/utils/supabase/admin'
 import { generateBlueprintPatches } from '@/utils/siteforge/llm-patch-generator'
 import { applyBlueprintPatch } from '@/utils/siteforge/blueprint'
-import type { SiteBlueprint } from '@/utils/siteforge/agents'
+import type { SiteBlueprint } from '@/types/siteforge'
 
 export async function POST(
   request: NextRequest,

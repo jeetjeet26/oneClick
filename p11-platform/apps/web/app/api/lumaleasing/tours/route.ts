@@ -485,8 +485,5 @@ The ${propertyName} Team`;
     </div>
   </div>
 </body>
-</html>`;
-
-  return { text, html };
+</html>`;  return { text, html };
 }
-

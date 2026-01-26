@@ -356,7 +356,7 @@ export async function POST(req: NextRequest) {
           answer_id: insertedAnswer.id,
           url: citation.url,
           domain: citation.domain,
-          is_brand_domain: brandDomains.some(bd => 
+          is_brand_domain: brandDomains.some((bd: string) => 
             citation.domain.includes(bd.replace(/^www\./, ''))
           ),
           entity_ref: citation.entity_ref || null

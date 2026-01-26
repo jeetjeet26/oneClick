@@ -270,3 +270,7 @@ The migration:
 
 **Ready to test!** Run `setup-test.sql` in Supabase, then test the sync! 🎉
 
+
+
+
+

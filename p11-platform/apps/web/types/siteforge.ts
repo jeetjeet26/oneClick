@@ -173,6 +173,7 @@ export interface PageSection {
   order: number
   label?: string // user-facing label (optional)
   variant?: string // library variant key (optional)
+  cssClasses?: string[] // custom CSS classes (optional)
 }
 
 // Generated page structure
@@ -286,6 +287,7 @@ export interface SiteBlueprint {
   version: number
   pages: GeneratedPage[]
   updatedAt?: string
+  brandContext?: any // Optional brand context from BrandAgent
 }
 
 // LLM-driven editing API

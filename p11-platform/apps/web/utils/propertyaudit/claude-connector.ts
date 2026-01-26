@@ -168,11 +168,14 @@ function coerceToAnswerBlock(candidate: unknown): AnswerBlock | null {
       const url = typeof cit.url === 'string' ? cit.url : null
       const domain = typeof cit.domain === 'string' ? cit.domain : null
       if (!url || !domain) continue
-      citations.push({
+      const citation: any = {
         url,
-        domain,
-        entity_ref: typeof cit.entity_ref === 'string' ? cit.entity_ref : undefined
-      })
+        domain
+      }
+      if (typeof cit.entity_ref === 'string') {
+        citation.entity_ref = cit.entity_ref
+      }
+      citations.push(citation)
     }
   }
 

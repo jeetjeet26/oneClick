@@ -15,10 +15,10 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { propertyId: string } }
+  { params }: { params: Promise<{ propertyId: string }> }
 ) {
-  const supabase = createClient();
-  const { propertyId } = params;
+  const supabase = await createClient();
+  const { propertyId } = await params;
   
   const searchParams = request.nextUrl.searchParams;
   const dateRange = searchParams.get('dateRange') || '30d';

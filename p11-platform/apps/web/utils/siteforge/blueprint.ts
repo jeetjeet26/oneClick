@@ -1,27 +1,7 @@
-import type { GeneratedPage, PageSection, SiteBlueprint, ACFBlockType } from '@/types/siteforge'
+import type { GeneratedPage, PageSection, SiteBlueprint, ACFBlockType, BlueprintPatchOperation } from '@/types/siteforge'
 
-export type BlueprintPatchOperation =
-  | {
-      op: 'update_section'
-      sectionId: string
-      content: Record<string, unknown>
-      reasoning?: string
-    }
-  | {
-      op: 'add_section'
-      pageSlug: string
-      afterSectionId?: string
-      section: {
-        type: string
-        acfBlock: ACFBlockType
-        content: Record<string, unknown>
-        reasoning: string
-        label?: string
-        variant?: string
-      }
-    }
-  | { op: 'remove_section'; sectionId: string }
-  | { op: 'move_section'; sectionId: string; toOrder: number }
+// Re-export for convenience
+export type { BlueprintPatchOperation }
 
 export function ensureSectionIds(pages: GeneratedPage[]): GeneratedPage[] {
   return pages.map(page => ({
@@ -51,7 +31,9 @@ export function applyBlueprintPatch(blueprint: SiteBlueprint, ops: BlueprintPatc
     if (op.op === 'update_section') {
       const hit = findSection(next.pages, op.sectionId)
       if (hit) {
-        hit.section.content = op.content
+        if (op.content) hit.section.content = op.content
+        if (op.variant) hit.section.variant = op.variant
+        if (op.cssClasses) hit.section.cssClasses = op.cssClasses
         if (op.reasoning) hit.section.reasoning = op.reasoning
       }
       continue

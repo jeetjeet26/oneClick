@@ -256,3 +256,7 @@ SELECT * FROM fact_marketing_performance ORDER BY date DESC LIMIT 10;
 
 Done! 🎉
 
+
+
+
+

@@ -88,7 +88,7 @@ export function AdAccountConnections() {
   const [selectedProperty, setSelectedProperty] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showLinkModal, setShowLinkModal] = useState(false)
-  const [accountToLink, setAccountToLink] = useState<GoogleAdsAccount | null>(null)
+  const [accountToLink, setAccountToLink] = useState<GoogleAdsAccount | MetaAdAccount | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   // Fetch all data
@@ -154,11 +154,11 @@ export function AdAccountConnections() {
 
     const accountId = 'customer_id' in accountToLink 
       ? accountToLink.customer_id 
-      : accountToLink.id
+      : (accountToLink as any).id
     
     const accountName = 'descriptive_name' in accountToLink
       ? accountToLink.descriptive_name
-      : accountToLink.name
+      : (accountToLink as any).name
 
     setActionLoading(accountId)
 

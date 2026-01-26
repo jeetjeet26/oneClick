@@ -169,7 +169,7 @@ export class BrandAgent extends BaseAgent {
       })
     } else {
       console.warn('⚠️ [BrandAgent] No BrandForge data available:', {
-        error: brandForgeError?.message || 'null returned',
+        error: (brandForgeError as any)?.message || 'null returned',
         propertyId: this.propertyId
       })
     }
@@ -189,8 +189,8 @@ export class BrandAgent extends BaseAgent {
     console.log(`🎨 [BrandAgent] Data scenario determined: ${dataScenario}`, {
       hasBrandBook,
       hasKB,
-      brandForgeError: brandForgeError?.message || null,
-      vectorError: vectorError?.message || null,
+      brandForgeError: (brandForgeError as any)?.message || null,
+      vectorError: (vectorError as any)?.message || null,
       vectorCounts: {
         uniqueness: vectorContext?.uniqueness?.length || 0,
         audience: vectorContext?.audience?.length || 0,
@@ -764,6 +764,11 @@ Use conservative, professional defaults that work for most properties.`
     }
   }
 }
+
+
+
+
+
 
 
 

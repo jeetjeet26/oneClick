@@ -285,7 +285,7 @@ export class OpenAIConnector implements Connector {
       const completion = await client.chat.completions.create(requestOptions)
 
       raw = completion
-      const content = completion.choices?.[0]?.message?.content ?? ''
+      const content = 'choices' in completion ? completion.choices?.[0]?.message?.content ?? '' : ''
       const jsonValue = tryParseJson(content)
 
       if (jsonValue) {

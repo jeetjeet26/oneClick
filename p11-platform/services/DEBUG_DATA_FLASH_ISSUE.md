@@ -311,3 +311,7 @@ python -m pipelines.mcp_marketing_sync --all --date-range LAST_30_DAYS
 2. Data Engine terminal output (when running sync)
 3. SQL query result (SELECT COUNT from fact_marketing_performance)
 
+
+
+
+

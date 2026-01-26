@@ -190,20 +190,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let query = supabase
-      .from('import_jobs')
-      .select('*');
+    let data, error;
 
     if (jobId) {
-      query = query.eq('id', jobId).single();
+      const result = await supabase
+        .from('import_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+      data = result.data;
+      error = result.error;
     } else if (propertyId) {
-      query = query
+      const result = await supabase
+        .from('import_jobs')
+        .select('*')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: false })
         .limit(10);
+      data = result.data;
+      error = result.error;
     }
-
-    const { data, error } = await query;
 
     if (error) {
       throw new Error(error.message);
@@ -219,4 +225,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+
+
+
+
 

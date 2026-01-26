@@ -359,7 +359,7 @@ export abstract class BaseAgent {
     return {
       ...property,
       floorplans: floorplans || []
-    } as PropertyInfo
+    } as unknown as PropertyInfo
   }
   
   /**
@@ -468,6 +468,11 @@ interface BrandForgeData {
   section_10_photo_style?: unknown
   conversation_summary?: unknown
 }
+
+
+
+
+
 
 
 

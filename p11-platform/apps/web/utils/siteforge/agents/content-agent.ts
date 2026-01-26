@@ -6,6 +6,7 @@
 import { BaseAgent, type VectorSearchResult } from './base-agent'
 import type { BrandContext } from './brand-agent'
 import type { ArchitectureProposal } from './architecture-agent'
+import type { Photo } from './photo-agent'
 
 export interface GeneratedPage {
   slug: string
@@ -241,6 +242,11 @@ Match this sophistication level.
     return assignments
   }
 }
+
+
+
+
+
 
 
 

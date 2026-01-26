@@ -4,8 +4,8 @@
 
 **AI-Powered Marketing Suite for Multifamily Real Estate**
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-81.9%25-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Python](https://img.shields.io/badge/Python-15.9%25-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-81.0%25-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python-16.1%25-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com/)
 
@@ -13,11 +13,11 @@
 
 ---
 
-## 🎯 Vision
+## 🎯 Overview
 
-P11 Platform is building the **first autonomous marketing agency** for multifamily real estate. Where AI agents respond to prospects in seconds (not hours), content flows on-demand, campaigns optimize 24/7, and humans focus on strategy—not repetitive tasks.
+P11 Platform is an **all-in-one AI marketing operating system** for apartment communities. It replaces 10+ disconnected tools with a unified platform that automates lead nurturing, content generation, review management, competitive intelligence, and multi-channel analytics.
 
-> *"Imagine a marketing agency that never sleeps."*
+**The result:** Property managers scale from 10-12 properties to **30-40 properties** per person.
 
 ---
 
@@ -31,10 +31,10 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 │  │      Web Console     │    │       Data Engine           │   │
 │  │  (Next.js 16 + React)│    │   (Python + FastAPI)        │   │
 │  │                      │    │                             │   │
-│  │  • Dashboard Shell   │    │  • ETL Pipelines (Meta,     │   │
-│  │  • AI Products UI    │    │    Google Ads, GA4)         │   │
-│  │  • Analytics Views   │    │  • Web Scrapers (Apify)     │   │
-│  │  • Settings & Auth   │    │  • ML Models (LeadPulse)    │   │
+│  │  • Dashboard Shell   │    │  • ETL Pipelines            │   │
+│  │  • AI Products UI    │    │  • Web Scrapers             │   │
+│  │  • Analytics Views   │    │  • CRM Integrations         │   │
+│  │  • Settings & Auth   │    │  • AI Schema Discovery      │   │
 │  └──────────┬───────────┘    └─────────────┬───────────────┘   │
 │             │                              │                    │
 │             └──────────────┬───────────────┘                    │
@@ -42,378 +42,79 @@ P11 Platform is building the **first autonomous marketing agency** for multifami
 │  ┌─────────────────────────▼─────────────────────────────────┐  │
 │  │                     Supabase                               │  │
 │  │  • PostgreSQL (Data Lake + pgvector)                      │  │
-│  │  • Auth (Email/Password, Google OAuth)                    │  │
-│  │  • Row Level Security (Multi-tenant)                      │  │
-│  │  • Edge Functions (API Gateway)                           │  │
+│  │  • Auth (Multi-tenant RLS)                                │  │
+│  │  • Storage (Brand assets, documents)                      │  │
+│  │  • Real-time subscriptions                                │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 AI Product Suite
+## 🚀 Products
 
 ### Intelligent Conversion
 | Product | Description | Status |
 |---------|-------------|--------|
-| **TourSpark™ CRM** | Complete lead management with activity timeline, automated workflows, and tour scheduling | ✅ Live |
-| **LumaLeasing™** | 24/7 AI chatbot with RAG for instant prospect responses | ✅ Live |
-| **LeadPulse™** | Predictive lead scoring with engagement & behavior analysis | ✅ Live |
+| **TourSpark™** | Complete CRM with lead management, activity timeline, automated workflows, and tour scheduling | ✅ Production |
+| **LumaLeasing™** | 24/7 AI chatbot with RAG-powered responses, embeddable widget, and human takeover | ✅ Production |
+| **LeadPulse™** | Predictive lead scoring with 5-dimensional algorithm (engagement, timing, source, completeness, behavior) | ✅ Production |
+| **CRM Sync** | One-way lead push to Yardi, RealPage, Salesforce, and HubSpot with AI field mapping | ✅ Production |
 
 ### Content Factory
 | Product | Description | Status |
 |---------|-------------|--------|
-| **BrandForge™** | AI-powered brand book generator with Gemini 2.0 - complete brand strategy in 30 minutes | ✅ Live |
-| **ForgeStudio AI™** | Generate content with Google Veo 3 video + Imagen 3 images | ✅ Live |
-| **ReviewFlow AI™** | Multi-source review sync (Google, Yelp, SerpAPI) + AI responses | ✅ Live |
-| **SocialPilot X™** | Instagram integration with per-property OAuth credentials | ✅ Live |
-
-### Site Generation
-| Product | Description | Status |
-|---------|-------------|--------|
-| **SiteForge™** | AI-powered WordPress website generation with Gemini 3 Pro - complete sites in 3 minutes | ✅ Live |
+| **BrandForge™** | AI-powered brand book generator with Gemini 2.0 - complete brand strategy in 30 minutes | ✅ Production |
+| **SiteForge™** | AI WordPress website generation with Gemini 3 Pro - complete sites in 3 minutes | ✅ Production |
+| **ForgeStudio AI™** | Content generation with Google Veo 3 video + Imagen 3 images | ✅ Production |
+| **ReviewFlow AI™** | Multi-source review sync (Google, Yelp, SerpAPI) with AI-generated responses | ✅ Production |
 
 ### Strategic Intelligence
 | Product | Description | Status |
 |---------|-------------|--------|
-| **MultiChannel BI** | Unified analytics with natural language queries | ✅ Live |
-| **MarketVision 360™** | Competitor scraping + Brand Intelligence AI analysis | ✅ Live |
-| **Community Intelligence** | Website scraping + Knowledge base auto-population | ✅ Live |
+| **MultiChannel BI** | Unified analytics dashboard with CSV import and MCP auto-sync | ✅ Production |
+| **MarketVision 360™** | Competitor scraping + Brand Intelligence AI analysis with semantic search | ✅ Production |
+| **PropertyAudit™** | Parallel AI audits (OpenAI + Claude) with web search and quality flags | ✅ Production |
 
 ---
 
-## ✨ Latest Updates (Dec 19, 2025)
-
-### 🔌 MCP Ads Integration Complete! (Dec 19, 2025)
-**One-click marketing data sync from Google Ads and Meta Ads!**
-
-#### What Was Implemented
-
-**Store + Sync Architecture:**
-- MCP servers query live APIs (Google Ads, Meta Ads)
-- Data stored in `fact_marketing_performance` for instant dashboard queries
-- Historical trends and aggregations now possible
-- No more API rate limit issues
-
-**MultiChannel BI Auto-Import:**
-- New "Import Data" dropdown in `/dashboard/bi`
-- ✨ **Auto-Import (MCP)** - Pull from connected ad platforms with one click
-- 📄 **Upload CSV** - Manual file upload (existing)
-- Real-time progress tracking during sync
-- Automatic dashboard refresh after import
-
-**MCP Servers Reorganized:**
-- Directory structure updated for Python package compatibility
-- `google_ads/` - Google Ads MCP server (7 tools)
-- `meta_ads/` - Meta Ads MCP server (20+ tools)
-- `wordpress/` - WordPress deployment MCP server
-
-**New Files Created:**
-```
-services/data-engine/
-└── pipelines/
-    └── mcp_marketing_sync.py    # Scheduled sync pipeline
-
-apps/web/
-├── app/dashboard/bi/page.tsx   # Updated with MCP import dropdown
-├── app/api/marketvision/
-│   ├── [propertyId]/route.ts   # Property marketing data API
-│   └── import/route.ts         # MCP import trigger API
-└── components/marketvision/
-    ├── PropertyMarketingDashboard.tsx
-    └── ImportScheduleSettings.tsx
-```
-
-#### Performance Comparison
-
-| Method | Setup Time | Data Freshness | Historical Data |
-|--------|-----------|----------------|-----------------|
-| CSV Upload | 2 minutes | Manual | Unlimited |
-| MCP Auto-Import | **1 click** | **Real-time** | **Unlimited** |
-
-**Documentation:** See [MCP Ads Integration](./p11-platform/services/mcp-servers/IMPLEMENTATION_SUMMARY.md) for complete guide.
-
----
-
-### 🚀 Data Engine Migration - PropertyAudit Phase 1 Complete! (Dec 18, 2025)
-**Zero-downtime migration of PropertyAudit to Python data-engine with 50% faster parallel execution!**
-
-#### What Was Implemented
-
-**Feature Flag Architecture:**
-- Instant switch between TypeScript (legacy) and Python (data-engine) execution
-- Environment variable: `PROPERTYAUDIT_USE_DATA_ENGINE=true/false`
-- No downtime, instant rollback capability
-- Same database tables used by both execution paths
-
-**Full TypeScript Parity in Python:**
-- ✅ Structured Mode - Direct GEO extraction with schema
-- ✅ Natural Mode - Two-phase: natural response → analysis
-- ✅ Web Search Integration - OpenAI `web_search_preview` tool
-- ✅ Location Context - Detailed property location in prompts
-- ✅ Quality Flags - Detects hallucinations, no_sources, outdated_info
-- ✅ Proper Scoring Formula - 45% Position + 25% Link + 20% SOV + 10% Accuracy
-- ✅ Model-Specific Logic - GPT-5.2 `max_completion_tokens` handling
-- ✅ Retry Logic - Exponential backoff with 3 retries
-
-**Parallel Execution (50% Faster!):**
-- OpenAI and Claude now execute simultaneously
-- Both models finish at ~same time instead of sequential
-- Batch coordination with `batch_id` and `batch_size` columns
-- Cross-model insights aggregation
-
-**Real-time Progress Tracking:**
-- Progress percentage updates (5% → 11% → 16%...)
-- `progress_pct`, `current_query_index`, `last_updated_at` columns
-- Stalled job detection for monitoring
-
-#### New Files Created
-```
-services/data-engine/
-├── connectors/           # LLM connectors with full parity
-│   ├── openai_connector.py           # Structured mode
-│   ├── claude_connector.py           # Structured mode
-│   ├── openai_natural_connector.py   # Natural two-phase mode
-│   ├── claude_natural_connector.py   # Natural two-phase mode
-│   ├── cross_model_analyzer.py       # Cross-model analysis
-│   ├── evaluator.py                  # Scoring formula
-│   └── schemas.py                    # Strict JSON schemas
-├── jobs/
-│   └── propertyaudit.py              # Complete job executor
-├── utils/
-│   └── auth.py                       # API key authentication
-└── start.ps1                         # PowerShell startup script
-
-supabase/migrations/
-├── 20251218000000_add_geo_runs_progress.sql    # Progress tracking
-└── 20251218010000_add_geo_runs_batch_columns.sql  # Batch coordination
-```
-
-#### Performance Comparison
-
-| Metric | TypeScript (Legacy) | Python Data-Engine |
-|--------|--------------------|--------------------|
-| Max Runtime | 5-10 min (Vercel limit) | **Unlimited** |
-| Execution | Sequential | **Parallel (50% faster)** |
-| Progress Visibility | None | **Real-time %** |
-| Query Handling | < 10 queries | **100+ queries** |
-| Timeout Risk | High | **None** |
-
-**Documentation:** See [DATA_ENGINE_MIGRATION.md](./docs/DATA_ENGINE_MIGRATION.md) for complete guide.
-
----
-
-### 🔧 Widget Sessions Fix (Dec 16, 2025)
-**Resolved critical LumaLeasing widget session tracking issues!**
-
-#### What Was Fixed
-- **Widget Session Tracking:** Fixed `widget_sessions` table schema to properly track anonymous and authenticated chat sessions
-- **RLS Policies:** Enhanced Row Level Security for proper multi-tenant isolation
-- **Lead Capture:** Improved lead creation flow from widget conversations
-- **Session Persistence:** Widget sessions now correctly maintain state across page refreshes
-
-#### Migration Applied
-- `20251216000000_fix_widget_sessions.sql` - Corrected session tracking schema
-
-**What This Means:**
-- 🔒 Widget sessions are now properly secured with RLS
-- 📊 Accurate analytics for anonymous vs authenticated conversations
-- 🎯 Better lead attribution from widget interactions
-- 🔄 Seamless session management across the widget lifecycle
-
----
-
-## ✨ Latest Updates (Dec 2025)
-
-### 📊 MultiChannel BI - CSV Import Feature! (Dec 11, 2025)
-**Import marketing data from Google Ads and Meta in seconds!**
-
-#### What is CSV Import?
-
-A comprehensive data import system that lets users upload CSV exports from Google Ads and Meta Ads directly into the MultiChannel BI dashboard - no API connections required!
-
-#### Features ✅
-
-* **Multi-Platform Support:** Google Ads and Meta Ads CSV exports
-* **8+ Report Types:** 
-  - Time Series (daily performance)
-  - Search Keywords
-  - Demographics (gender, age)
-  - Devices (mobile, desktop, tablet)
-  - Locations (geographic breakdown)
-  - Day & Hour (dayparting analysis)
-  - Auction Insights
-  - Networks
-* **Smart Parser:** Auto-detects platform and report type from CSV structure
-* **Batch Processing:** Upload multiple files or entire folders at once
-* **Preview Mode:** See parsed data and totals before importing
-* **4-Step Wizard:** Platform selection → Upload → Preview → Import
-
-#### Technical Implementation
-
-* **CSV Parser:** 615 lines of robust parsing logic handling multiple date formats, currency formats, and data structures
-* **API Route:** `/api/analytics/upload` with preview and import modes
-* **Data Storage:** 
-  - Time series → `fact_marketing_performance` table
-  - Extended reports → `fact_extended_metrics` table
-* **UI Component:** Drag-and-drop modal with real-time validation and progress tracking
-
-#### Use Cases
-
-* 🚀 Quick setup without API configuration
-* 📊 Import historical campaign data
-* 🧪 Test the dashboard with real data
-* 🏢 Agencies managing multiple client exports
-
-#### Cost Efficiency
-
-| Method | Setup Time | Historical Data |
-| -- | -- | -- |
-| API Integration | 30-60 min | Limited |
-| CSV Import | **< 2 minutes** | **Unlimited** |
-
-**What This Means:**
-
-* 📥 Instant access to marketing data without complex API setup
-* 📈 Import years of historical campaign data in minutes
-* 🎯 Support for detailed dimensional analysis (keywords, demographics, locations)
-* 🔄 Works alongside API pipelines for hybrid data ingestion
-
----
-
-### 🌐 SiteForge™ - AI WordPress Site Generator! (Dec 11, 2025)
-**Generate complete WordPress websites in 3 minutes!**
-
-#### What is SiteForge?
-An AI-powered WordPress website generator that creates professional apartment community websites using brand intelligence from BrandForge, knowledge base content, and property data. Deploys directly to Cloudways-hosted WordPress with the Collection theme.
-
-#### Features ✅
-- **3-Tier Brand Intelligence:**
-  1. Priority 1: BrandForge data (95% confidence)
-  2. Priority 2: Knowledge Base extraction (80% confidence)
-  3. Priority 3: Generated from property data (60% confidence)
-- **Gemini 3 Pro Integration:** High-thinking mode for architecture planning, low-thinking for content generation
-- **14 ACF Block Types:** Full support for Collection theme blocks (menu, top-slides, text-section, feature-section, gallery, accordion-section, plans-availability, POI, form, map, and more)
-- **Generation Wizard:** Multi-step modal with live progress tracking (polls every 2 seconds)
-- **Website Preview:** Page-by-page content viewer with section breakdown and design strategy display
-- **WordPress Deployment:** Cloudways API integration for one-click WordPress provisioning
-
-#### Technical Implementation
-- **API Routes:** 6 new endpoints (`/api/siteforge/generate`, `/api/siteforge/list`, `/api/siteforge/status/[websiteId]`, `/api/siteforge/preview/[websiteId]`, `/api/siteforge/deploy/[websiteId]`, `/api/siteforge/delete/[websiteId]`)
-- **Components:** 4 new React components (`GenerationWizard`, `WebsitePreview`, `ACFBlockRenderer`, etc.)
-- **Utils:** 3 service modules (`brand-intelligence.ts`, `llm-orchestration.ts`, `wordpress-client.ts`)
-- **AI Model:** Gemini 3 Pro with structured JSON output
-- **Database:** 4 new tables (`property_websites`, `website_assets`, `website_generations`, `siteforge_jobs`)
-
-#### Cost Efficiency
-| Method | Cost | Time |
-|--------|------|------|
-| Manual Website | $800-1,000 | 2-3 weeks |
-| SiteForge | ~$0.60 | 3 minutes |
-| **Savings** | **99.9%** | **99.9%** |
-
-**What This Means:**
-- 🚀 Websites that took weeks now take minutes
-- 🎨 Brand-consistent sites leveraging BrandForge assets
-- 💡 Intelligent architecture planning by Gemini 3 Pro
-- 📦 Direct WordPress deployment with Collection theme
-
----
-
-### 🎨 BrandForge™ - AI Brand Book Generator! (Dec 10, 2025)
-**Generate professional brand guidelines in 30 minutes!**
-
-#### What is BrandForge?
-An AI-powered brand book generator that creates comprehensive brand guidelines through a conversational process with Gemini 2.0. It produces the same quality deliverables as P11's manual brand books (matching the ALBUM brand book structure).
-
-#### Features ✅
-- **Competitive Analysis Integration:** Leverages MarketVision intelligence to inform brand positioning
-- **Conversational Wizard:** 8-10 exchange conversation with Gemini 2.0 to understand brand vision
-- **12 Section Brand Book:**
-  1. Introduction & Brand Overview
-  2. Positioning Statement
-  3. Target Audience Analysis
-  4. Resident Personas (3 profiles)
-  5. Brand Name & Story
-  6. Logo Design (AI-generated)
-  7. Typography System
-  8. Color Palette (5-color scheme)
-  9. Design Elements & Patterns
-  10. Photo Guidelines - Do's
-  11. Photo Guidelines - Don'ts
-  12. Implementation Examples
-
-- **Stepwise Generation:** Each section generates sequentially with approval gates
-- **Edit & Regenerate:** Inline editing for all text + AI regeneration with optional hints
-- **PDF Export:** Professional 15-page brand book with all assets
-- **Knowledge Base Integration:** Automatically embedded for LumaLeasing to reference
-- **Property Overview Display:** Brand identity card with colors, logo, and download link
-
-#### Technical Implementation
-- **API Routes:** 8 new endpoints (`/api/brandforge/*`)
-- **Components:** 5 new React components (`BrandForgeWizard`, `ConversationInterface`, `SectionReview`, etc.)
-- **AI Model:** Gemini 2.0 Flash Exp for conversation & generation
-- **Image Generation:** Imagen 3.0 via Vertex AI for logo design
-- **Storage:** `property_brand_assets` table + Supabase Storage bucket
-
-#### Integration Points
-- **Property Onboarding:** "Generate Brand Book" option in Knowledge Base step
-- **Community Overview:** Brand identity display card with download
-- **Future Ready:** Structured storage for SiteForge WordPress site generation
-
-**What This Means:**
-- 🚀 Brand books that took 2-3 weeks now take 30 minutes
-- 🎨 Professional-quality brand strategy accessible to every property
-- 💡 Competitive intelligence directly informs brand positioning
-- 📦 Reusable brand assets across all P11 products
-
----
-
-### 🎉 TourSpark™ CRM MVP Launched! (Dec 10, 2025)
-**The #1 most requested feature is now live!**
-
-#### Phase 0: Database Foundation ✅
-- **12 new tables:** tours, workflow_definitions, lead_workflows, workflow_actions, follow_up_templates, lead_activities, lead_scores, lead_engagement_events, lumaleasing_config, widget_sessions, tour_slots, tour_bookings
-- **Database function:** `score_lead()` for LeadPulse
-- **Enhanced leads table:** Added last_contacted_at, updated_at, move_in_date, bedrooms, notes
-- **RLS policies:** Security for all new tables
-
-#### Phase 1: Lead Management UI ✅
-- **Activity Timeline:** Complete lead history with add notes feature
-- **Lead Detail Drawer:** Enhanced with 4 tabs (Details, Tours, Activity, Automation)
-- **Edit Lead:** Full contact info editing (name, email, phone, source)
-- **Activities API:** `/api/leads/[id]/activities` for timeline data
-
-#### Phase 2: Workflow Automation ✅
-- **3 Default Workflows:**
-  1. New Lead Nurture (5 min, 24hr, 48hr follow-ups)
-  2. Tour No-Show Recovery (2hr, 24hr re-engagement)
-  3. Post-Tour Follow-Up (4hr, 48hr nurture)
-- **7 Message Templates:** With variable substitution (`{first_name}`, `{property_name}`)
-- **Workflow Settings Page:** `/dashboard/settings/workflows` with on/off toggles
-- **CRON Processor:** Runs every 10 minutes via `/api/workflows/process`
-
-**What This Means:**
-- 🚀 Lead follow-ups are now 100% automated
-- 📊 Complete visibility into every lead interaction
-- ⏱️ Sub-5-minute response time for new leads
-- 📅 1-click tour scheduling with calendar invites
-- 🎯 Zero manual setup (default workflows included)
-
-### 🔐 Per-Property Social Authentication
-- **Custom OAuth Credentials**: Each property can now configure their own Instagram/Facebook app credentials
-- **Secure Storage**: Encrypted app secrets stored in `social_auth_configs` table
-- **Setup Modal**: New `InstagramSetupModal` component guides users through OAuth app creation
-
-### 📧 AI-Powered Tour Confirmations
-- **Smart Email Generation**: `tour-email-generator.ts` creates personalized confirmation emails
-- **Property Context**: Includes amenities, contact info, and tour details
-- **Calendar Invites**: Auto-generated .ics files attached
-
-### 📊 Batch Review Analysis
-- **Bulk Processing**: `/api/reviewflow/analyze-batch` endpoint for multiple reviews
-- **SerpAPI Integration**: Enhanced Google Places scraping
-- **Multi-Source Sync**: Improved error handling
+## ✨ Key Features
+
+### CRM Integration (New!)
+- **AI-Powered Field Mapping** - Claude analyzes CRM schema and suggests intelligent mappings
+- **Duplicate Prevention** - Searches CRM by email/phone before creating leads
+- **Multi-CRM Support** - Yardi RENTCafé, RealPage OneSite, Salesforce, HubSpot
+- **Test Sync Validation** - Creates/reads/deletes test record to verify mappings
+- **Bulk Sync** - Push existing leads to CRM with checkbox selection
+- **Learning System** - Tracks user corrections to improve future suggestions
+- **Real-time Monitoring** - Dashboard with success rates and sync history
+
+### Lead Management
+- **Activity Timeline** - Complete lead history with notes and interactions
+- **Automated Workflows** - 3 default templates (new lead nurture, no-show recovery, post-tour)
+- **Lead Scoring** - 5-dimensional algorithm with Hot/Warm/Cold buckets
+- **Tour Scheduling** - Calendar integration with AI-generated confirmation emails
+- **Multi-channel Follow-ups** - SMS + Email automation
+
+### Content Generation
+- **Brand Books** - 12-section brand guidelines with logo, colors, typography
+- **WordPress Sites** - Complete websites with 14 ACF block types
+- **Video Content** - Veo 3 text-to-video with synchronized audio
+- **Image Assets** - Imagen 3 generation with style presets
+- **Social Media** - Per-property Instagram OAuth configuration
+
+### Competitive Intelligence
+- **Competitor Scraping** - Automated website analysis with Apify
+- **Brand Intelligence** - AI analysis of positioning, voice, and messaging
+- **Semantic Search** - pgvector-powered search across competitor content
+- **Market Gap Analysis** - Identifies opportunities in competitive landscape
+
+### Analytics & Reporting
+- **Unified Dashboard** - Multi-channel performance in one view
+- **CSV Import** - Support for 8+ report types (keywords, demographics, devices, locations)
+- **MCP Auto-Sync** - One-click data import from Google Ads and Meta Ads
+- **Historical Trends** - Unlimited historical data storage
+- **Scheduled Reports** - Automated email reports
 
 ---
 
@@ -421,15 +122,15 @@ An AI-powered brand book generator that creates comprehensive brand guidelines t
 
 | Layer | Technology |
 |-------|------------|
-| **Frontend** | Next.js 16, React 19.2, Tailwind CSS 4, Recharts |
+| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS |
 | **Backend** | Next.js API Routes, FastAPI (Python) |
 | **Database** | PostgreSQL + pgvector (Supabase) |
-| **AI/ML** | OpenAI GPT-4o, text-embedding-3-small, Google Gemini 2.0 Flash, Gemini 3 Pro, LangChain |
-| **Video Generation** | Google Veo 3 Preview (video + synchronized audio) |
-| **Image Generation** | Google Imagen 3.0 via Vertex AI |
-| **Data Pipelines** | Python, dlt, Apify (Apartments.com scraping) |
-| **Review APIs** | Google Places API, Yelp Fusion API, SerpAPI |
-| **Auth** | Supabase Auth (GoTrue) |
+| **AI Models** | OpenAI GPT-4o, Claude Sonnet 4, Google Gemini 2.0 & 3.0 |
+| **Video** | Google Veo 3 Preview |
+| **Images** | Google Imagen 3.0 via Vertex AI |
+| **CRM APIs** | simple-salesforce, hubspot-api-client, Yardi/RealPage REST |
+| **Data Pipelines** | Python, dlt, Apify |
+| **Auth** | Supabase Auth with Row Level Security |
 | **Deployment** | Vercel (web), Heroku (data-engine) |
 
 ---
@@ -440,72 +141,48 @@ An AI-powered brand book generator that creates comprehensive brand guidelines t
 oneClick/
 ├── p11-platform/
 │   ├── apps/
-│   │   └── web/                    # Next.js 16 Dashboard
+│   │   └── web/                          # Next.js 16 Dashboard
 │   │       ├── app/
-│   │       │   ├── api/            # API Routes (95+ endpoints)
-│   │       │   │   ├── analytics/  # BI endpoints (performance, goals, campaigns)
-│   │       │   │   ├── brandforge/ # AI brand book generation (8 endpoints)
-│   │       │   │   ├── siteforge/  # AI WordPress site generation (6 endpoints) 🆕
-│   │       │   │   ├── chat/       # LumaLeasing RAG chat
-│   │       │   │   ├── community/  # Community profile & contacts
-│   │       │   │   ├── forgestudio/# Content + Veo 3 video + social config
-│   │       │   │   ├── leadpulse/  # ML-powered lead scoring
-│   │       │   │   ├── leads/      # Tour scheduling & management
-│   │       │   │   ├── lumaleasing/# Admin config & conversations
-│   │       │   │   ├── marketvision/# Competitor + brand intelligence
-│   │       │   │   ├── reviewflow/ # Multi-source review management + batch analysis
-│   │       │   │   └── onboarding/ # Website scraping & setup
-│   │       │   ├── auth/           # Authentication pages
-│   │       │   ├── dashboard/      # Product pages (16 sections)
-│   │       │   │   ├── brandforge/ # Brand book viewer & editor
-│   │       │   │   └── siteforge/  # Website generation & preview 🆕
-│   │       │   └── onboarding/     # Multi-step wizard (6 steps)
-│   │       ├── components/         # React components (95+)
-│   │       │   ├── brandforge/     # Brand book generation UI
-│   │       │   ├── siteforge/      # Website generation wizard & preview 🆕
-│   │       │   ├── charts/         # BI visualizations
-│   │       │   ├── community/      # Community management + brand display
-│   │       │   ├── forgestudio/    # Content generation + Instagram setup
-│   │       │   ├── leadpulse/      # Lead scoring components
-│   │       │   ├── leads/          # Tour scheduling modals
-│   │       │   ├── lumaleasing/    # Chatbot widget + config
-│   │       │   │   ├── LumaLeasingWidget.tsx  # React widget
-│   │       │   │   └── LumaLeasingConfig.tsx  # Admin config UI
-│   │       │   ├── marketvision/   # Competitor analysis
-│   │       │   └── reviewflow/     # Review management + import
-│   │       ├── types/
-│   │       │   └── siteforge.ts    # SiteForge type definitions 🆕
+│   │       │   ├── api/                  # 100+ API endpoints
+│   │       │   │   ├── analytics/        # BI & performance data
+│   │       │   │   ├── brandforge/       # Brand book generation
+│   │       │   │   ├── siteforge/        # WordPress site generation
+│   │       │   │   ├── integrations/     # CRM, ad platforms
+│   │       │   │   ├── leads/            # TourSpark CRM
+│   │       │   │   ├── lumaleasing/      # AI chatbot
+│   │       │   │   ├── marketvision/     # Competitor intelligence
+│   │       │   │   └── reviewflow/       # Review management
+│   │       │   ├── dashboard/            # Product pages
+│   │       │   │   ├── leads/            # TourSpark page
+│   │       │   │   ├── settings/         # Settings & CRM config
+│   │       │   │   ├── brandforge/       # Brand book viewer
+│   │       │   │   └── siteforge/        # Website generator
+│   │       │   └── auth/                 # Authentication
+│   │       ├── components/               # React components
+│   │       │   ├── crm/                  # CRM sync monitor
+│   │       │   ├── leads/                # Tour scheduling
+│   │       │   └── layout/               # Dashboard shell
 │   │       └── utils/
-│   │           ├── services/       # Business logic
-│   │           │   ├── messaging.ts           # SMS/Email services
-│   │           │   └── tour-email-generator.ts # AI tour confirmations
-│   │           └── siteforge/      # SiteForge services 🆕
-│   │               ├── brand-intelligence.ts  # 3-tier brand extraction
-│   │               ├── llm-orchestration.ts   # Gemini 3 Pro integration
-│   │               └── wordpress-client.ts    # Cloudways & WP REST API
+│   │           └── services/
+│   │               ├── crm-sync.ts       # CRM integration
+│   │               └── messaging.ts      # SMS/Email
 │   ├── services/
-│   │   └── data-engine/            # Python ETL & ML
-│   │       ├── pipelines/          # GA4, Google Ads, Meta Ads
-│   │       └── scrapers/           # 10 scraper modules
-│   │           ├── apartments_com.py
-│   │           ├── apify_apartments.py
-│   │           ├── brand_intelligence.py
-│   │           ├── coordinator.py
-│   │           ├── discovery.py
-│   │           ├── google_places.py
-│   │           ├── serpapi_reviews.py  # NEW: SerpAPI integration
-│   │           ├── website_intelligence.py
-│   │           └── yelp.py
+│   │   └── data-engine/                  # Python FastAPI
+│   │       ├── connectors/
+│   │       │   ├── crm_adapters/         # Yardi, RealPage, Salesforce, HubSpot
+│   │       │   ├── openai_connector.py
+│   │       │   └── claude_connector.py
+│   │       ├── jobs/
+│   │       │   ├── propertyaudit.py      # Parallel AI audits
+│   │       │   └── crm_schema_agent.py   # AI field mapping
+│   │       ├── routers/
+│   │       │   ├── brand_intelligence.py
+│   │       │   └── crm_integration.py    # CRM API endpoints
+│   │       ├── pipelines/                # ETL pipelines
+│   │       └── scrapers/                 # Web scrapers
 │   └── supabase/
-│       └── migrations/             # 12 migration files
-│           ├── 20251208000000_init_schema.sql
-│           ├── 20251209030000_forgestudio_reviewflow_schema.sql
-│           ├── 20251209040000_community_onboarding_schema.sql
-│           ├── 20251209050000_competitor_brand_intelligence.sql
-│           ├── 20251210000000_reviewflow_multi_source.sql
-│           ├── 20251210010000_social_auth_configs.sql
-│           └── 20251212000000_crm_mvp_schema.sql  # NEW: CRM tables
-└── docs/                           # Planning documents
+│       └── migrations/                   # 55+ database migrations
+└── docs/                                 # Technical documentation
 ```
 
 ---
@@ -514,26 +191,36 @@ oneClick/
 
 ### Prerequisites
 - Node.js 20+
-- Python 3.11+
+- Python 3.13+
 - Supabase project (with pgvector enabled)
 - OpenAI API key
-- Google Cloud project (for Veo 3 / Vertex AI)
+- Google Cloud project (for Vertex AI)
+- Anthropic API key (for Claude)
 
 ### 1. Clone & Install
 
 ```bash
 git clone https://github.com/jeetjeet26/oneClick.git
-cd oneClick/p11-platform/apps/web
+cd oneClick/p11-platform
+```
+
+### 2. Install Dependencies
+
+**Web App:**
+```bash
+cd apps/web
 npm install
 ```
 
-### 2. Configure Environment
-
+**Data Engine:**
 ```bash
-cp .env.example .env.local
+cd ../../services/data-engine
+pip install -r requirements.txt
 ```
 
-Edit `.env.local` with your credentials:
+### 3. Configure Environment
+
+Create `.env` in `p11-platform/` root:
 
 ```env
 # Supabase
@@ -544,478 +231,222 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-key
 # OpenAI
 OPENAI_API_KEY=sk-...
 
-# Google Cloud (Vertex AI for Veo 3 & Imagen 3)
+# Anthropic (for Claude)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Google Cloud (Vertex AI)
 GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 
-# Google Gemini 2.0 (for BrandForge)
+# Google Gemini
 GOOGLE_GEMINI_API_KEY=your-gemini-api-key
-
-# Review Platforms
-GOOGLE_PLACES_API_KEY=your-key
-YELP_FUSION_API_KEY=your-key
-SERPAPI_API_KEY=your-key  # Optional: for enhanced scraping
-
-# Social Media (Optional: per-property config available via UI)
-META_APP_ID=your-app-id
-META_APP_SECRET=your-app-secret
 
 # Data Engine
 DATA_ENGINE_URL=http://localhost:8000
+DATA_ENGINE_API_KEY=your-secure-key
 
-# Site URL
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+# Messaging (Optional)
+TWILIO_ACCOUNT_SID=your-sid
+TWILIO_AUTH_TOKEN=your-token
+TWILIO_PHONE_NUMBER=+1234567890
+RESEND_API_KEY=re_...
 
-# Encryption (for social auth secrets)
-ENCRYPTION_KEY=your-secure-key-here
+# Review Platforms (Optional)
+GOOGLE_PLACES_API_KEY=your-key
+YELP_FUSION_API_KEY=your-key
+SERPAPI_API_KEY=your-key
 ```
 
-### 3. Run Database Migrations
+### 4. Run Database Migrations
 
 ```bash
-cd ../../supabase
-supabase db push
+cd supabase
+# Apply all migrations via Supabase CLI or dashboard
 ```
 
-### 4. Start Development Server
+### 5. Start Services
 
+**Terminal 1 - Data Engine:**
 ```bash
-cd ../apps/web
+cd services/data-engine
+python main.py
+# Runs on http://localhost:8000
+```
+
+**Terminal 2 - Web App:**
+```bash
+cd apps/web
 npm run dev
+# Runs on http://localhost:3000
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) — authenticated users land at `/dashboard`.
+Visit **http://localhost:3000** and sign up to get started!
 
 ---
 
-## 🗄️ Database Schema
+## 📊 Database Schema
 
-Key tables in the unified data model:
+Core tables in the unified data model:
 
-| Table | Purpose |
-|-------|---------|
-| `organizations` | Multi-tenant companies |
-| `properties` | Apartment communities |
-| `community_profiles` | Extended property data (amenities, pet policy, etc.) |
-| `community_contacts` | Multiple contacts per property |
-| `documents` | RAG knowledge base (pgvector embeddings) |
-| `knowledge_sources` | Track where knowledge came from |
-| `fact_marketing_performance` | Unified marketing metrics |
-| `leads` | Lead tracking and scoring |
-| `conversations` / `messages` | Chat history |
-| `content_drafts` / `forgestudio_assets` | Generated content & media |
-| `property_brand_assets` | BrandForge generated brand books (12 sections) |
-| `property_websites` | 🆕 SiteForge generated websites |
-| `website_assets` | 🆕 Website images, logos, and assets |
-| `website_generations` | 🆕 Website regeneration history |
-| `siteforge_jobs` | 🆕 Async job queue for site generation |
-| `reviews` / `review_responses` | ReviewFlow data |
-| `review_platform_connections` | Google, Yelp, manual connections |
-| `competitors` / `competitor_snapshots` | MarketVision scraped data |
-| `competitor_brand_intelligence` | AI-analyzed brand positioning |
-| `competitor_content_chunks` | Vector embeddings for semantic search |
-| `social_auth_configs` | Per-property OAuth credentials |
+| Category | Tables |
+|----------|--------|
+| **Identity** | `organizations`, `properties`, `profiles`, `team_members` |
+| **CRM** | `leads`, `lead_activities`, `lead_scores`, `tours`, `tour_bookings`, `workflow_definitions`, `lead_workflows` |
+| **Conversations** | `conversations`, `messages`, `widget_sessions`, `lumaleasing_config` |
+| **Content** | `content_drafts`, `forgestudio_assets`, `property_brand_assets`, `property_websites`, `website_assets` |
+| **Intelligence** | `competitors`, `competitor_brand_intelligence`, `competitor_content_chunks`, `reviews`, `review_responses` |
+| **Analytics** | `fact_marketing_performance`, `fact_extended_metrics`, `scheduled_reports`, `metric_goals` |
+| **Integrations** | `integration_credentials`, `field_mapping_suggestions`, `ad_account_connections`, `social_auth_configs` |
+| **Knowledge** | `documents`, `knowledge_sources` (pgvector embeddings) |
 
 ---
 
-## 🔌 API Reference
+## 🔌 API Endpoints
 
-### MultiChannel BI & Analytics
-
-```http
-GET /api/analytics/performance?propertyId=...&startDate=...&endDate=...&compare=true
-Response: { timeSeries: [], channels: [], totals: {}, comparison: {} }
-
-GET /api/analytics/campaigns?propertyId=...&startDate=...&endDate=...
-Response: { campaigns: [], channels: [], totals: {} }
-
-POST /api/analytics/upload
-Body: {
-  csvContent: string,
-  filename: string,
-  campaignName: string,
-  propertyId: string,
-  platform: "google_ads" | "meta",
-  preview?: boolean  // Set true to validate before import
-}
-Response: {
-  success: boolean,
-  preview?: {
-    totalRows: number,
-    dateRange: { start: string, end: string },
-    reportType: string,
-    isExtended: boolean,
-    totals: { impressions, clicks, spend, conversions }
-  },
-  imported?: {
-    rowCount: number,
-    dateRange: { start: string, end: string },
-    reportType: string
-  },
-  errors?: string[],
-  warnings?: string[]
-}
-```
-
-**Supported Report Types:**
-- Time Series (daily performance data)
-- Search Keywords
-- Demographics (gender, age)
-- Devices (mobile, desktop, tablet)
-- Locations (geographic breakdown)
-- Day & Hour (dayparting analysis)
-- Auction Insights
-- Networks
-
-### LumaLeasing Chat
+### CRM Integration
 ```typescript
-POST /api/chat
-Body: { messages: Message[], propertyId: string, conversationId?: string }
-Response: { role: "assistant", content: string, conversationId: string }
+POST /api/integrations/crm
+Actions:
+  - test-connection      // Test CRM API credentials
+  - discover-schema      // AI-powered field mapping
+  - search-lead          // Check for duplicates
+  - push-lead            // Sync single lead
+  - bulk-sync            // Sync multiple leads
+  - validate-mapping     // Test with create/read/delete
+  - save-mapping         // Save configuration
+  - sync-stats           // Get sync statistics
+  - sync-history         // Recent sync activity
+```
 
-POST /api/lumaleasing/chat   // External widget endpoint (embedded integrations)
-Body: { messages: Message[], sessionId?: string, leadInfo?: object }
+### Lead Management
+```typescript
+GET  /api/leads?propertyId=...&status=...&page=...
+POST /api/leads                           // Create lead
+PATCH /api/leads                          // Update lead
+GET  /api/leads/[id]/activities           // Activity timeline
+POST /api/leads/[id]/activities           // Add note/activity
+POST /api/leads/[id]/tours                // Schedule tour
+POST /api/leads/[id]/send-message         // Send SMS/Email
+```
+
+### AI Chatbot
+```typescript
+POST /api/lumaleasing/chat
 Headers: { X-API-Key: string, X-Visitor-ID: string }
-Response: { content: string, sessionId: string, conversationId: string }
-
-GET /api/lumaleasing/config   // Widget configuration (embedded integrations)
-Headers: { X-API-Key: string }
-Response: { config: object, isOnline: boolean }
+Body: { messages: Message[], sessionId?: string, leadInfo?: object }
+Response: { content: string, sessionId: string, shouldPromptLeadCapture: boolean }
 ```
 
-### ForgeStudio Content & Video Generation
+### Brand & Site Generation
 ```typescript
-POST /api/forgestudio/generate
-Body: { propertyId: string, contentType: "social" | "blog", topic: string }
+POST /api/brandforge/conversation         // Chat with Gemini 2.0
+POST /api/brandforge/generate-next-section // Generate brand book sections
+POST /api/brandforge/generate-pdf         // Export PDF
 
-POST /api/forgestudio/assets/generate
-Body: {
-  propertyId: string,
-  generationType: "text-to-video" | "image-to-video" | "image",
-  prompt: string,
-  style: "luxury" | "modern" | "natural" | "vibrant" | "cozy" | "professional",
-  aspectRatio: "16:9" | "9:16",
-  videoDuration: 4 | 6 | 8,
-  includeAudio: boolean  // Veo 3 synchronized audio
-}
-
-// NEW: Social Media Configuration
-POST /api/forgestudio/social/config
-Body: {
-  propertyId: string,
-  platform: "meta",
-  appId: string,
-  appSecret: string
-}
-
-GET /api/forgestudio/social/config?propertyId=...
-Response: { configs: SocialAuthConfig[] }
+POST /api/siteforge/generate              // Generate WordPress site
+GET  /api/siteforge/status/[websiteId]    // Poll generation progress
+POST /api/siteforge/deploy/[websiteId]    // Deploy to WordPress
 ```
 
-### LeadPulse Scoring
+### Analytics
 ```typescript
-POST /api/leadpulse/score
-Body: { leadId: string }
-Response: {
-  totalScore: number,
-  engagementScore: number,
-  timingScore: number,
-  sourceScore: number,
-  factors: { factor: string, impact: string, type: "positive" | "negative" }[]
-}
-
-GET /api/leadpulse/insights?propertyId=...
-Response: { insights: LeadInsight[], recommendations: string[] }
-```
-
-### TourSpark Scheduling
-```typescript
-POST /api/leads/[id]/tours
-Body: {
-  tourDate: string,
-  tourTime: string,
-  notes?: string,
-  sendConfirmation: boolean
-}
-Response: {
-  success: boolean,
-  tour: Tour,
-  emailSent: boolean  // NEW: AI-generated confirmation
-}
-```
-
-### MarketVision Competitors
-```typescript
-GET /api/marketvision/competitors?propertyId=...
-Response: { competitors: Competitor[], lastUpdated: string }
-
-POST /api/marketvision/brand-intelligence
-Body: { competitorId: string }
-Response: { jobId: string }  // Async job
-
-GET /api/marketvision/brand-intelligence/{competitorId}
-Response: {
-  brand_voice: string,
-  unique_selling_points: string[],
-  highlighted_amenities: string[],
-  active_specials: string[]
-}
-```
-
-### ReviewFlow Multi-Source
-```typescript
-POST /api/reviewflow/sync
-Body: { propertyId: string, platform: "google" | "yelp", method?: "api" | "scraper" }
-
-POST /api/reviewflow/connections
-Body: {
-  propertyId: string,
-  platform: "google" | "yelp" | "manual",
-  placeId?: string,        // Google
-  yelpBusinessId?: string  // Yelp
-}
-
-GET /api/reviewflow/reviews?propertyId=...&status=pending
-Response: { reviews: Review[], stats: ReviewStats }
-
-POST /api/reviewflow/respond
-Body: { reviewId: string, response: string, tone?: string }
-
-// NEW: Batch Analysis
-POST /api/reviewflow/analyze-batch
-Body: { reviewIds: string[] }
-Response: { analyzed: number, insights: ReviewInsight[] }
-```
-
-### BrandForge AI Brand Books
-```typescript
-// Step 1: Analyze competitors
-POST /api/brandforge/analyze
-Body: { propertyId: string }
-Response: {
-  competitors: Competitor[],
-  marketGaps: string[],
-  recommendations: string[]
-}
-
-// Step 2: Conversation with Gemini 2.0
-POST /api/brandforge/conversation
-Body: { propertyId: string, userMessage: string, conversationHistory: Message[] }
-Response: {
-  aiResponse: string,
-  isComplete: boolean,
-  nextPrompt?: string
-}
-
-// Step 3: Generate sections sequentially
-POST /api/brandforge/generate-next-section
-Body: { propertyId: string }
-Response: {
-  section: string,  // "introduction" | "positioning" | "target_audience" | ...
-  content: object,  // Structured section data
-  progress: number  // 1-12
-}
-
-// Edit, regenerate, or approve sections
-POST /api/brandforge/edit-section
-POST /api/brandforge/regenerate-section
-POST /api/brandforge/approve-section
-
-// Generate final PDF
-POST /api/brandforge/generate-pdf
-Body: { propertyId: string }
-Response: {
-  pdfUrl: string,
-  assetId: string,
-  documentId: string  // Knowledge base reference
-}
-
-GET /api/brandforge/status?propertyId=...
-Response: {
-  stage: "pending" | "analyzing" | "conversing" | "generating" | "complete",
-  currentSection: string,
-  approvedSections: string[],
-  conversationHistory: Message[]
-}
-```
-
-### SiteForge WordPress Generation
-```typescript
-// Generate a new website
-POST /api/siteforge/generate
-Body: {
-  propertyId: string,
-  preferences?: {
-    style: "modern" | "luxury" | "cozy" | "vibrant" | "professional",
-    emphasis: "amenities" | "location" | "lifestyle" | "value" | "community",
-    ctaPriority: "tours" | "applications" | "contact" | "calls"
-  }
-}
-Response: {
-  jobId: string,
-  websiteId: string,
-  status: "queued",
-  estimatedTimeSeconds: number
-}
-
-// List websites for a property
-GET /api/siteforge/list?propertyId=...
-Response: { websites: PropertyWebsite[] }
-
-// Get generation status (poll every 2 seconds)
-GET /api/siteforge/status/[websiteId]
-Response: {
-  websiteId: string,
-  status: GenerationStatus,
-  progress: number,  // 0-100
-  currentStep?: string,
-  siteArchitecture?: SiteArchitecture,
-  wpUrl?: string
-}
-
-// Get full website preview
-GET /api/siteforge/preview/[websiteId]
-Response: {
-  website: PropertyWebsite,
-  pages: GeneratedPage[],
-  assets: WebsiteAsset[],
-  designDecisions: object
-}
-
-// Deploy to WordPress
-POST /api/siteforge/deploy/[websiteId]
-Response: { wpUrl: string, wpAdminUrl: string }
-
-// Delete website
-DELETE /api/siteforge/delete/[websiteId]
-```
-
-### Community Intelligence
-```typescript
-POST /api/onboarding/scrape-website
-Body: { propertyId: string, websiteUrl: string }
-Response: {
-  extracted: { amenities: string[], pet_policy: object, contact_phone: string },
-  documentsCreated: number  // RAG chunks added
-}
-
-GET /api/community/profile?propertyId=...
-GET /api/community/contacts?propertyId=...
-GET /api/community/knowledge-sources?propertyId=...
+GET /api/analytics/performance?propertyId=...&startDate=...&endDate=...
+POST /api/analytics/upload                // CSV import (8+ report types)
+GET /api/analytics/campaigns              // Campaign performance
 ```
 
 ---
 
 ## 🧪 Development
 
+### Web App
 ```bash
-# Start dev server
-npm run dev
-
-# Type check
-npm run type-check
-
-# Lint
-npm run lint
-
-# Build for production
-npm run build
+cd p11-platform/apps/web
+npm run dev          # Start dev server
+npm run build        # Build for production
+npm run lint         # Run linter
 ```
 
-### Data Engine (Python)
-
+### Data Engine
 ```bash
-cd services/data-engine
-python -m venv venv
-.\venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Mac/Linux
-pip install -r requirements.txt
+cd p11-platform/services/data-engine
+python main.py       # Start FastAPI server
+# API docs available at http://localhost:8000/docs
+```
 
-# Run API server
-uvicorn main:app --reload --port 8000
-
-# Run ETL pipelines
-python run_pipelines.py
+### Database
+```bash
+cd p11-platform/supabase
+supabase db push     # Apply migrations
+supabase db reset    # Reset database
 ```
 
 ---
 
-## 📊 Key Metrics & Impact
+## 📊 Performance Metrics
 
 | Metric | Traditional | With P11 |
 |--------|-------------|----------|
-| Response Time | Hours | **Seconds** |
+| Lead Response Time | Hours | **< 1 minute** |
 | Content Output | 50-75/month | **300+/month** |
 | Brand Book Creation | 2-3 weeks | **30 minutes** |
-| Website Generation | 2-3 weeks | **3 minutes** 🆕 |
-| Properties per AM | 10-12 | **30-40** |
+| Website Generation | 2-3 weeks | **3 minutes** |
+| Properties per Manager | 10-12 | **30-40** |
 | Campaign Optimization | Business hours | **24/7/365** |
-| Review Response Time | Days | **< 1 hour** |
-| Tour Confirmation | Manual | **Instant AI** |
+| Review Response | Days | **< 1 hour** |
+| CRM Data Entry | Manual | **Automatic** |
 
 ---
 
-## 🗺️ Roadmap
+## 🔐 Security
 
-### ✅ Q4 2025 — Foundation (Complete)
-- [x] Data Lake infrastructure
-- [x] LumaLeasing RAG chatbot
-- [x] MultiChannel BI dashboard
-- [x] ForgeStudio content generation
-- [x] Community onboarding wizard
+- **Row Level Security (RLS)** - Multi-tenant data isolation at database level
+- **API Key Authentication** - Secure widget and data-engine endpoints
+- **Encrypted Storage** - Social OAuth credentials encrypted at rest
+- **Service Role Protection** - Admin operations use service role key
+- **CORS Configuration** - Restricted origins for API access
 
-### ✅ Q1 2026 — Intelligence (Complete - Dec 2025!)
-- [x] **TourSpark™ CRM MVP** - Lead management, workflows, activity timeline
-- [x] **LeadPulse™ Scoring** - 5-dimensional algorithm with DB function
-- [x] **Workflow Automation** - 3 default templates, CRON processor
-- [x] MarketVision competitor scraping
-- [x] Brand Intelligence AI analysis
-- [x] ReviewFlow multi-source (Google, Yelp, SerpAPI)
-- [x] ForgeStudio Veo 3 video generation
-- [x] Website Intelligence scraping
-- [x] Per-property social OAuth
-- [x] AI tour confirmations
-- [x] Batch review analysis
+---
 
-### 🔨 Q2 2026 — Scale (In Progress)
-- [x] TourSpark automation sequences ✅
-- [x] **BrandForge™** - AI brand book generator ✅ (Early delivery!)
-- [x] **SiteForge™** - WordPress site generation from brand assets ✅ (Early delivery!)
-- [ ] Advanced pipeline configuration UI
-- [ ] LLM-powered CRM configurator
-- [ ] SocialPilot auto-posting
-- [ ] AdForge ad generation
-- [ ] SearchBoost SEO automation
+## 🌟 Recent Updates
 
-### 📋 Q3-Q4 2026 — Optimization
-- [ ] ChurnSignal retention prediction
-- [ ] TrueSource attribution
-- [ ] Full autonomous operations
+### January 2026 - CRM Integration
+- ✅ AI-powered schema discovery with Claude Sonnet 4
+- ✅ One-way lead push to Yardi, RealPage, Salesforce, HubSpot
+- ✅ Duplicate checking before creating leads
+- ✅ Bulk sync existing leads from TourSpark
+- ✅ Self-service configuration UI with field mapping review
+- ✅ Test sync validation (create/read/delete test record)
+- ✅ Learning system tracks corrections for better AI suggestions
+- ✅ Real-time sync monitoring dashboard
+
+### December 2025 - Data Engine Migration
+- ✅ PropertyAudit migrated to Python with 50% faster parallel execution
+- ✅ MCP marketing data auto-sync (Google Ads + Meta Ads)
+- ✅ Real-time progress tracking for long-running jobs
+- ✅ Feature flag architecture for zero-downtime migrations
+
+### December 2025 - Site Generation
+- ✅ SiteForge WordPress generator with Gemini 3 Pro
+- ✅ BrandForge brand book generator with Gemini 2.0
+- ✅ 3-tier brand intelligence extraction
+- ✅ Cloudways deployment integration
 
 ---
 
 ## 📚 Documentation
 
-### Core Documentation
-- **Docs index**: see [`docs/`](./docs/)
-- **Production readiness audit**: [`docs/PRODUCTION_READINESS_AUDIT_2025-12-15.md`](./docs/PRODUCTION_READINESS_AUDIT_2025-12-15.md)
-- **SiteForge master report**: [`docs/SITEFORGE_MASTER_REPORT.md`](./docs/SITEFORGE_MASTER_REPORT.md)
-
 ### Product Guides
-- **[SiteForge Quick Start](./docs/SITEFORGE_QUICKSTART.md)** 🆕
-- **[SiteForge MVP Status](./docs/SITEFORGE_MVP_STATUS.md)** 🆕
-- **[SiteForge Complete](./docs/SITEFORGE_COMPLETE.md)** 🆕
-- [BrandForge Quick Start](./docs/BRANDFORGE_QUICKSTART.md)
-- [BrandForge Complete Summary](./docs/BRANDFORGE_COMPLETE_SUMMARY.md)
-- [BrandForge Implementation](./docs/BRANDFORGE_IMPLEMENTATION.md)
-- [CRM Implementation Plan](./docs/P11_CRM_IMPLEMENTATION_PLAN.md)
-- [CRM Quick Start](./docs/CRM_QUICK_START.md)
-- [CRM Vision & Context](./docs/P11_CRM_VISION_CONTEXT.md)
-- [Email Diagnostic Guide](./docs/EMAIL_DIAGNOSTIC_GUIDE.md)
+- [CRM Integration Quick Start](./docs/CRM_QUICK_START.md)
+- [BrandForge Quick Start](./docs/BRANDFORGE.md)
+- [SiteForge Quick Start](./docs/SITEFORGE.md)
+- [Data Engine Migration](./docs/DATA_ENGINE_MIGRATION.md)
+- [Production Readiness Audit](./docs/PRODUCTION_READINESS_AUDIT_2025-12-15.md)
 
-### Technical Documentation
-- [MCP Servers README](./p11-platform/services/mcp-servers/README.md)
-- [Data Engine README](./p11-platform/services/data-engine/README.md)
+### Technical Docs
+- [MCP Servers](./p11-platform/services/mcp-servers/README.md)
+- [Data Engine](./p11-platform/services/data-engine/README.md)
+- [Agents Documentation](./docs/AGENTS.md)
 
 ---
 
@@ -1024,14 +455,15 @@ python run_pipelines.py
 This is a private project for P11 Creative. For internal team members:
 
 1. Create a feature branch from `main`
-2. Make your changes
+2. Make your changes with descriptive commits
 3. Submit a pull request for review
+4. Ensure all tests pass and linter is clean
 
 ---
 
 ## 📄 License
 
-Proprietary — P11 Creative © 2025
+Proprietary — P11 Creative © 2025-2026
 
 ---
 
@@ -1039,6 +471,6 @@ Proprietary — P11 Creative © 2025
 
 **Built with ❤️ by P11 Creative**
 
-*The Autonomous Agency starts now.*
+*The Autonomous Agency*
 
 </div>

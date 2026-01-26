@@ -69,6 +69,9 @@ interface GeoScoreSummary {
 interface SurfaceScore {
   overallScore: number
   visibilityPct: number
+  avgLlmRank: number | null
+  avgLinkRank: number | null
+  avgSov: number | null
   runId: string
   runAt: string
 }
@@ -235,7 +238,7 @@ export default function PropertyAuditPage() {
 
   const handleCreateQuery = async (queryData: {
     text: string
-    type: 'branded' | 'category' | 'comparison' | 'local' | 'faq'
+    type: 'branded' | 'category' | 'comparison' | 'local' | 'faq' | 'voice_search'
     weight: number
     geo?: string
   }) => {
@@ -834,10 +837,7 @@ export default function PropertyAuditPage() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateQuery}
-        defaultGeo={currentProperty?.address?.city ? 
-          `${currentProperty.address.city}, ${currentProperty.address.state}` : 
-          undefined
-        }
+        defaultGeo={currentProperty?.city}
         propertyName={currentProperty?.name}
       />
 

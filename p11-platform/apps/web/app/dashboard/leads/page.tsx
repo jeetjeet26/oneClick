@@ -33,7 +33,12 @@ import {
   BedDouble,
   FileText,
   MapPin,
-  Settings
+  Settings,
+  Database,
+  Link2,
+  Upload,
+  Loader2,
+  SkipForward
 } from 'lucide-react'
 import { formatDistanceToNow, format, parseISO, isAfter } from 'date-fns'
 import { TourScheduleModal } from '@/components/leads/TourScheduleModal'
@@ -55,6 +60,9 @@ type Lead = {
   bedrooms?: string | null
   notes?: string | null
   last_contacted_at?: string | null
+  external_crm_id?: string | null
+  crm_sync_status?: 'pending' | 'created' | 'linked' | 'failed' | 'skipped'
+  crm_synced_at?: string | null
 }
 
 type TourLead = {
@@ -216,21 +224,55 @@ function ScoreBadge({ score, bucket }: { score?: number | null; bucket?: string 
 function LeadRow({ 
   lead, 
   onStatusChange,
-  onSelect 
+  onSelect,
+  isSelected,
+  onToggleSelect
 }: { 
   lead: Lead
   onStatusChange: (leadId: string, status: Lead['status']) => void
   onSelect: (lead: Lead) => void
+  isSelected: boolean
+  onToggleSelect: (leadId: string) => void
 }) {
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const config = STATUS_CONFIG[lead.status]
 
+  const getCRMSyncBadge = () => {
+    if (!lead.crm_sync_status || lead.crm_sync_status === 'pending') return null
+    
+    const syncConfig = {
+      created: { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Synced' },
+      linked: { icon: Link2, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Linked' },
+      failed: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', label: 'Failed' },
+      skipped: { icon: SkipForward, color: 'text-slate-400', bg: 'bg-slate-50', label: 'Skipped' },
+    }
+    
+    const syncStatus = syncConfig[lead.crm_sync_status]
+    if (!syncStatus) return null
+    
+    const SyncIcon = syncStatus.icon
+    
+    return (
+      <div className={`inline-flex items-center gap-1 px-2 py-0.5 ${syncStatus.bg} rounded text-xs`}>
+        <SyncIcon size={12} className={syncStatus.color} />
+        <span className={syncStatus.color}>{syncStatus.label}</span>
+      </div>
+    )
+  }
+
   return (
     <tr 
-      className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors cursor-pointer ${config.bgLight}`}
-      onClick={() => onSelect(lead)}
+      className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${config.bgLight}`}
     >
-      <td className="px-4 py-4">
+      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(lead.id)}
+          className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+        />
+      </td>
+      <td className="px-4 py-4 cursor-pointer" onClick={() => onSelect(lead)}>
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium text-sm shadow-sm">
             {lead.first_name[0]}{lead.last_name[0]}
@@ -239,6 +281,7 @@ function LeadRow({
             <div className="flex items-center gap-2">
               <p className="font-medium text-slate-900">{lead.first_name} {lead.last_name}</p>
               <ScoreBadge score={lead.score} bucket={lead.score_bucket} />
+              {getCRMSyncBadge()}
             </div>
             <p className="text-sm text-slate-500">{lead.email}</p>
           </div>
@@ -1883,6 +1926,11 @@ export default function LeadsPage() {
   
   // Create lead modal
   const [showCreateModal, setShowCreateModal] = useState(false)
+  
+  // Bulk CRM sync
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
+  const [syncingToCRM, setSyncingToCRM] = useState(false)
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null)
 
   const fetchLeads = useCallback(async () => {
     if (!currentProperty?.id) return
@@ -1954,6 +2002,68 @@ export default function LeadsPage() {
   const totalLeads = data?.pagination.total || 0
   const statusSummary = data?.statusSummary || {}
 
+  const handleBulkSyncToCRM = async () => {
+    if (selectedLeads.size === 0) return
+    
+    setSyncingToCRM(true)
+    setSyncSuccess(null)
+    setError(null)
+    
+    try {
+      const response = await fetch('/api/integrations/crm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'bulk-sync',
+          propertyId: currentProperty?.id,
+          leadIds: Array.from(selectedLeads),
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (result.success || result.message) {
+        setSyncSuccess(result.message || `Syncing ${selectedLeads.size} leads to CRM...`)
+        setSelectedLeads(new Set())
+        
+        // Refresh leads after a short delay to show updated sync status
+        setTimeout(() => {
+          fetchLeads()
+          setSyncSuccess(null)
+        }, 2000)
+      } else {
+        setError(result.error || 'Bulk sync failed')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync leads')
+    } finally {
+      setSyncingToCRM(false)
+    }
+  }
+
+  const toggleLeadSelection = (leadId: string) => {
+    const newSelected = new Set(selectedLeads)
+    if (newSelected.has(leadId)) {
+      newSelected.delete(leadId)
+    } else {
+      newSelected.add(leadId)
+    }
+    setSelectedLeads(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedLeads.size === data?.leads.length) {
+      setSelectedLeads(new Set())
+    } else {
+      setSelectedLeads(new Set(data?.leads.map(l => l.id) || []))
+    }
+  }
+
+  // Get unsync leads (pending or failed)
+  const unsyncedLeads = data?.leads.filter(l => 
+    !l.external_crm_id || l.crm_sync_status === 'failed' || l.crm_sync_status === 'pending'
+  ) || []
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1969,6 +2079,25 @@ export default function LeadsPage() {
         </div>
         
         <div className="flex items-center gap-3">
+          {selectedLeads.size > 0 && (
+            <button
+              onClick={handleBulkSyncToCRM}
+              disabled={syncingToCRM}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20 disabled:opacity-50"
+            >
+              {syncingToCRM ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <Upload size={16} />
+                  Sync {selectedLeads.size} to CRM
+                </>
+              )}
+            </button>
+          )}
           <button
             onClick={fetchLeads}
             disabled={loading}
@@ -2015,6 +2144,42 @@ export default function LeadsPage() {
           )
         })}
       </div>
+
+      {/* Bulk Sync Alert */}
+      {syncSuccess && (
+        <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-center gap-3">
+          <CheckCircle2 className="text-teal-600" size={20} />
+          <p className="text-teal-800">{syncSuccess}</p>
+        </div>
+      )}
+
+      {/* CRM Sync Info */}
+      {unsyncedLeads.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-3">
+              <Database className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="font-medium text-amber-900">
+                  {unsyncedLeads.length} lead{unsyncedLeads.length !== 1 ? 's' : ''} not synced to CRM
+                </p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Select leads below and click "Sync to CRM" to push them to your connected CRM.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const unsyncedIds = unsyncedLeads.map(l => l.id)
+                setSelectedLeads(new Set(unsyncedIds))
+              }}
+              className="text-sm text-amber-700 hover:text-amber-900 font-medium whitespace-nowrap"
+            >
+              Select All Unsynced
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -2111,6 +2276,14 @@ export default function LeadsPage() {
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-4 py-3 text-left w-12">
+                    <input
+                      type="checkbox"
+                      checked={selectedLeads.size === data?.leads.length && data?.leads.length > 0}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Lead
                   </th>
@@ -2137,6 +2310,8 @@ export default function LeadsPage() {
                     lead={lead}
                     onStatusChange={handleStatusChange}
                     onSelect={setSelectedLead}
+                    isSelected={selectedLeads.has(lead.id)}
+                    onToggleSelect={toggleLeadSelection}
                   />
                 ))}
               </tbody>
