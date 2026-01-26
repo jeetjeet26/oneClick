@@ -34,6 +34,12 @@
   let leadInfo = { firstName: '', lastName: '', email: '', phone: '' };
   let isTyping = false;
   let visitorId = getVisitorId();
+  
+  // Calendar state
+  let widgetMode = 'chat'; // 'chat' | 'calendar' | 'confirmation'
+  let calendarData = null;
+  let selectedDate = null;
+  let selectedTime = null;
 
   // Get or create visitor ID
   function getVisitorId() {
@@ -394,6 +400,218 @@
         color: #6b7280;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
       }
+      
+      /* Calendar Styles */
+      .ll-calendar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        background: #f9fafb;
+      }
+      .ll-calendar-header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .ll-calendar-header h3 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 600;
+        color: #111827;
+      }
+      .ll-calendar-subtitle {
+        margin: 0;
+        font-size: 14px;
+        color: #6b7280;
+      }
+      .ll-calendar-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      .ll-calendar-weekday {
+        text-align: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        padding: 8px 0;
+      }
+      .ll-calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+      }
+      .ll-calendar-day {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+      .ll-calendar-day-empty {
+        background: transparent;
+      }
+      .ll-calendar-day-past {
+        color: #d1d5db;
+        background: #fafafa;
+      }
+      .ll-calendar-day-unavailable {
+        color: #9ca3af;
+        background: #f3f4f6;
+      }
+      .ll-calendar-day-available {
+        color: #111827;
+        background: white;
+        cursor: pointer;
+        border: 2px solid #e5e7eb;
+      }
+      .ll-calendar-day-available:hover {
+        border-color: currentColor;
+        transform: scale(1.05);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      .ll-calendar-day-today {
+        border-color: #6366f1;
+        font-weight: 600;
+      }
+      .ll-time-slots {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .ll-time-slot {
+        padding: 12px 16px;
+        background: white;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .ll-time-slot:hover {
+        border-color: currentColor;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      }
+      .ll-calendar-footer {
+        margin-top: 16px;
+        display: flex;
+        justify-content: center;
+      }
+      .ll-button-secondary {
+        padding: 10px 20px;
+        background: white;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .ll-button-secondary:hover {
+        border-color: #9ca3af;
+        background: #f9fafb;
+      }
+      .ll-button-primary {
+        padding: 12px 24px;
+        background: #6366f1;
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .ll-button-primary:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+      .ll-button-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .ll-confirmation-summary {
+        text-align: center;
+        padding: 24px;
+        background: white;
+        border-radius: 12px;
+        margin-bottom: 24px;
+      }
+      .ll-confirmation-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 16px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+      }
+      .ll-confirmation-summary h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #111827;
+      }
+      .ll-confirmation-time {
+        margin: 0;
+        font-size: 16px;
+        color: #6b7280;
+      }
+      .ll-booking-form {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+      }
+      .ll-form-group {
+        margin-bottom: 16px;
+      }
+      .ll-form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #374151;
+      }
+      .ll-form-group input,
+      .ll-form-group textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: inherit;
+        transition: border-color 0.2s;
+      }
+      .ll-form-group input:focus,
+      .ll-form-group textarea:focus {
+        outline: none;
+        border-color: #6366f1;
+      }
+      .ll-form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+      }
+      .ll-form-actions button {
+        flex: 1;
+      }
+      .ll-error-message {
+        text-align: center;
+        padding: 40px 20px;
+      }
+      .ll-error-message p {
+        margin: 16px 0 24px;
+        color: #6b7280;
+        line-height: 1.5;
+      }
     `;
     document.head.appendChild(styles);
   }
@@ -412,7 +630,13 @@
     container.className = 'll-widget ' + config.position;
 
     if (isOpen) {
-      container.innerHTML = renderWindow();
+      if (widgetMode === 'calendar' && calendarData) {
+        container.innerHTML = renderCalendar();
+      } else if (widgetMode === 'confirmation') {
+        container.innerHTML = renderConfirmation();
+      } else {
+        container.innerHTML = renderWindow();
+      }
     } else {
       container.innerHTML = renderButton();
     }
@@ -521,6 +745,257 @@
     return div.innerHTML;
   }
 
+  // Render calendar picker
+  function renderCalendar() {
+    const gradient = `linear-gradient(135deg, ${config.primaryColor}, ${config.secondaryColor})`;
+    
+    if (!calendarData || !calendarData.availableDates || calendarData.availableDates.length === 0) {
+      return renderCalendarError('No available dates found. Please call us to schedule your tour.');
+    }
+
+    // If no date selected, show month view
+    if (!selectedDate) {
+      return renderMonthView();
+    }
+
+    // If date selected, show time picker
+    return renderTimePicker();
+  }
+
+  // Render calendar error
+  function renderCalendarError(errorMsg) {
+    const gradient = `linear-gradient(135deg, ${config.primaryColor}, ${config.secondaryColor})`;
+    return `
+      <div class="ll-window">
+        <div class="ll-header" style="background: ${gradient}">
+          <div class="ll-header-info">
+            <div class="ll-name">Schedule a Tour</div>
+          </div>
+          <button class="ll-close" onclick="lumaleasing('close')">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="ll-calendar-content">
+          <div class="ll-error-message">
+            <svg viewBox="0 0 24 24" style="width:48px;height:48px;fill:#f59e0b;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            <p>${escapeHtml(errorMsg)}</p>
+            <button class="ll-button-primary" onclick="window.lumaleasing_backToChat()" style="background: ${config.primaryColor}">
+              Back to Chat
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Render month view
+  function renderMonthView() {
+    const gradient = `linear-gradient(135deg, ${config.primaryColor}, ${config.secondaryColor})`;
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    // Build calendar grid
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startDayOfWeek = firstDay.getDay();
+
+    let calendarGrid = '';
+    let dayCounter = 1;
+
+    // Add week day headers
+    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    calendarGrid += '<div class="ll-calendar-weekdays">';
+    weekDays.forEach(day => {
+      calendarGrid += `<div class="ll-calendar-weekday">${day}</div>`;
+    });
+    calendarGrid += '</div>';
+
+    calendarGrid += '<div class="ll-calendar-grid">';
+
+    // Add empty cells for days before month starts
+    for (let i = 0; i < startDayOfWeek; i++) {
+      calendarGrid += '<div class="ll-calendar-day ll-calendar-day-empty"></div>';
+    }
+
+    // Add days of month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(currentYear, currentMonth, day);
+      const dateStr = dateObj.toISOString().split('T')[0];
+      const isAvailable = calendarData.availableDates.includes(dateStr);
+      const isPast = dateObj < today.setHours(0, 0, 0, 0);
+      const isToday = dateObj.toDateString() === today.toDateString();
+
+      let dayClass = 'll-calendar-day';
+      if (isPast) dayClass += ' ll-calendar-day-past';
+      else if (isAvailable) dayClass += ' ll-calendar-day-available';
+      else dayClass += ' ll-calendar-day-unavailable';
+      if (isToday) dayClass += ' ll-calendar-day-today';
+
+      const clickHandler = isAvailable ? `window.lumaleasing_selectDate('${dateStr}')` : '';
+
+      calendarGrid += `
+        <div class="${dayClass}" ${clickHandler ? `onclick="${clickHandler}"` : ''}>
+          ${day}
+        </div>
+      `;
+    }
+
+    calendarGrid += '</div>';
+
+    return `
+      <div class="ll-window">
+        <div class="ll-header" style="background: ${gradient}">
+          <div class="ll-header-info">
+            <div class="ll-name">Schedule a Tour</div>
+            <div class="ll-status-text">Select a date</div>
+          </div>
+          <button class="ll-close" onclick="window.lumaleasing_backToChat()">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="ll-calendar-content">
+          <div class="ll-calendar-header">
+            <h3>${new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(today)}</h3>
+            <p class="ll-calendar-subtitle">Select a day to see available times</p>
+          </div>
+          ${calendarGrid}
+          <div class="ll-calendar-footer">
+            <button class="ll-button-secondary" onclick="window.lumaleasing_backToChat()">
+              ← Back to Chat
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Render time picker for selected date
+  function renderTimePicker() {
+    const gradient = `linear-gradient(135deg, ${config.primaryColor}, ${config.secondaryColor})`;
+    const slots = calendarData.slotsByDate[selectedDate] || [];
+    const availableSlots = slots.filter(s => s.available);
+
+    if (availableSlots.length === 0) {
+      return renderCalendarError('No available times for this date. Please select another date.');
+    }
+
+    // Format date nicely
+    const dateObj = new Date(selectedDate + 'T00:00:00');
+    const formattedDate = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+    let timeSlotsHtml = '';
+    availableSlots.forEach(slot => {
+      const [hours, minutes] = slot.time.split(':');
+      const hour = parseInt(hours);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const hour12 = hour % 12 || 12;
+      const displayTime = `${hour12}:${minutes} ${ampm}`;
+
+      timeSlotsHtml += `
+        <button class="ll-time-slot" onclick="window.lumaleasing_selectTime('${slot.time}')" style="border-color: ${config.primaryColor}">
+          ${displayTime}
+        </button>
+      `;
+    });
+
+    return `
+      <div class="ll-window">
+        <div class="ll-header" style="background: ${gradient}">
+          <div class="ll-header-info">
+            <div class="ll-name">Schedule a Tour</div>
+            <div class="ll-status-text">Select a time</div>
+          </div>
+          <button class="ll-close" onclick="window.lumaleasing_backToChat()">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="ll-calendar-content">
+          <div class="ll-calendar-header">
+            <h3>${formattedDate}</h3>
+            <p class="ll-calendar-subtitle">Choose your preferred time</p>
+          </div>
+          <div class="ll-time-slots">
+            ${timeSlotsHtml}
+          </div>
+          <div class="ll-calendar-footer">
+            <button class="ll-button-secondary" onclick="window.lumaleasing_backToDatePicker()">
+              ← Pick Different Date
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Render confirmation form
+  function renderConfirmation() {
+    const gradient = `linear-gradient(135deg, ${config.primaryColor}, ${config.secondaryColor})`;
+    
+    // Format selected date/time
+    const dateObj = new Date(selectedDate + 'T00:00:00');
+    const formattedDate = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    
+    const [hours, minutes] = selectedTime.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    const displayTime = `${hour12}:${minutes} ${ampm}`;
+
+    return `
+      <div class="ll-window">
+        <div class="ll-header" style="background: ${gradient}">
+          <div class="ll-header-info">
+            <div class="ll-name">Confirm Your Tour</div>
+          </div>
+          <button class="ll-close" onclick="window.lumaleasing_backToChat()">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="ll-calendar-content">
+          <div class="ll-confirmation-summary">
+            <div class="ll-confirmation-icon" style="background: ${config.primaryColor}20; color: ${config.primaryColor}">
+              📅
+            </div>
+            <h3>${formattedDate}</h3>
+            <p class="ll-confirmation-time">${displayTime}</p>
+          </div>
+          <form id="ll-booking-form" class="ll-booking-form" onsubmit="return false;">
+            <div class="ll-form-group">
+              <label>First Name *</label>
+              <input type="text" id="ll-first-name" required value="${leadInfo.firstName || ''}" />
+            </div>
+            <div class="ll-form-group">
+              <label>Last Name *</label>
+              <input type="text" id="ll-last-name" required value="${leadInfo.lastName || ''}" />
+            </div>
+            <div class="ll-form-group">
+              <label>Email *</label>
+              <input type="email" id="ll-email" required value="${leadInfo.email || ''}" />
+            </div>
+            <div class="ll-form-group">
+              <label>Phone</label>
+              <input type="tel" id="ll-phone" value="${leadInfo.phone || ''}" />
+            </div>
+            <div class="ll-form-group">
+              <label>Special Requests</label>
+              <textarea id="ll-special-requests" rows="3" placeholder="Any specific things you'd like to see?"></textarea>
+            </div>
+            <div class="ll-form-actions">
+              <button type="button" class="ll-button-secondary" onclick="window.lumaleasing_backToTimePicker()">
+                ← Back
+              </button>
+              <button type="button" class="ll-button-primary" onclick="window.lumaleasing_confirmBooking()" style="background: ${config.primaryColor}">
+                Confirm Tour
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
   // Attach event listeners
   function attachEventListeners() {
     const input = document.getElementById('ll-input');
@@ -609,6 +1084,88 @@
     return null;
   }
 
+  // Detect tour intent in message
+  function detectTourIntent(text) {
+    const tourKeywords = [
+      'tour', 'visit', 'see', 'showing', 'appointment', 'schedule', 
+      'book', 'come by', 'stop by', 'check out', 'look at', 'view'
+    ];
+    const lowerText = text.toLowerCase();
+    return tourKeywords.some(keyword => lowerText.includes(keyword));
+  }
+
+  // Fetch tour availability from Google Calendar
+  async function fetchTourAvailability() {
+    try {
+      const response = await fetch(getApiBase() + '/api/lumaleasing/tours/availability?startDate=' + new Date().toISOString().split('T')[0], {
+        headers: {
+          'X-API-Key': config.apiKey,
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        if (error.fallback) {
+          // Calendar not connected, show message
+          return { error: error.message, fallback: true };
+        }
+        throw new Error('Failed to fetch availability');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('LumaLeasing: Failed to fetch tour availability', error);
+      return { error: 'Unable to load calendar. Please try again or call us.', fallback: true };
+    }
+  }
+
+  // Book a tour
+  async function bookTour(date, time, contactInfo) {
+    try {
+      const response = await fetch(getApiBase() + '/api/lumaleasing/tours', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': config.apiKey,
+          'X-Visitor-ID': visitorId
+        },
+        body: JSON.stringify({
+          slotId: null, // Using direct date/time, not slot ID
+          leadInfo: contactInfo,
+          specialRequests: contactInfo.specialRequests,
+          sessionId: sessionId,
+          conversationId: conversationId,
+          tourDate: date,
+          tourTime: time,
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Booking failed');
+      }
+
+      const data = await response.json();
+      leadCaptured = true;
+      leadInfo = { ...leadInfo, ...contactInfo };
+      
+      // Return to chat mode with success message
+      widgetMode = 'chat';
+      messages.push({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.message || 'Your tour is confirmed! We\'ve sent a confirmation email with calendar invite.',
+        timestamp: new Date()
+      });
+      
+      renderWidget();
+      
+      return data;
+    } catch (error) {
+      console.error('LumaLeasing: Tour booking failed', error);
+      throw error;
+    }
+  }
+
   // Send message
   async function sendMessage() {
     const input = document.getElementById('ll-input');
@@ -616,6 +1173,48 @@
 
     const text = input.value.trim();
     input.value = '';
+
+    // Check for tour intent FIRST
+    if (detectTourIntent(text) && widgetMode === 'chat') {
+      // Add user message
+      messages.push({
+        id: Date.now().toString(),
+        role: 'user',
+        content: text,
+        timestamp: new Date()
+      });
+
+      // Add assistant response suggesting calendar
+      messages.push({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Great! I can help you schedule a tour. Let me show you our available times...',
+        timestamp: new Date()
+      });
+
+      renderWidget();
+
+      // Fetch availability and switch to calendar mode
+      const availability = await fetchTourAvailability();
+      
+      if (availability.error) {
+        // Show error in chat
+        messages.push({
+          id: (Date.now() + 2).toString(),
+          role: 'assistant',
+          content: availability.error,
+          timestamp: new Date()
+        });
+        renderWidget();
+        return;
+      }
+
+      // Switch to calendar mode
+      calendarData = availability;
+      widgetMode = 'calendar';
+      renderWidget();
+      return;
+    }
 
     // Try to extract contact info from the message
     const extractedInfo = extractContactInfo(text);
@@ -719,6 +1318,75 @@
     config = null;
     messages = [];
   }
+
+  // Calendar widget handlers (exposed globally for onclick handlers)
+  window.lumaleasing_selectDate = function(dateStr) {
+    selectedDate = dateStr;
+    selectedTime = null;
+    renderWidget();
+  };
+
+  window.lumaleasing_backToDatePicker = function() {
+    selectedDate = null;
+    selectedTime = null;
+    renderWidget();
+  };
+
+  window.lumaleasing_selectTime = function(timeStr) {
+    selectedTime = timeStr;
+    widgetMode = 'confirmation';
+    renderWidget();
+  };
+
+  window.lumaleasing_backToTimePicker = function() {
+    widgetMode = 'calendar';
+    renderWidget();
+  };
+
+  window.lumaleasing_backToChat = function() {
+    widgetMode = 'chat';
+    selectedDate = null;
+    selectedTime = null;
+    calendarData = null;
+    renderWidget();
+  };
+
+  window.lumaleasing_confirmBooking = async function() {
+    const firstName = document.getElementById('ll-first-name')?.value;
+    const lastName = document.getElementById('ll-last-name')?.value;
+    const email = document.getElementById('ll-email')?.value;
+    const phone = document.getElementById('ll-phone')?.value;
+    const specialRequests = document.getElementById('ll-special-requests')?.value;
+
+    if (!firstName || !lastName || !email) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const button = document.querySelector('.ll-button-primary');
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Booking...';
+      }
+
+      await bookTour(selectedDate, selectedTime, {
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        phone: phone,
+        specialRequests: specialRequests
+      });
+
+      // Success handled in bookTour function (returns to chat with message)
+    } catch (error) {
+      alert('Failed to book tour. Please try again or call us.');
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Confirm Tour';
+      }
+    }
+  };
 
   // Replace queue with handler
   window.lumaleasing = function() {

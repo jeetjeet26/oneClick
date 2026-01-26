@@ -24,6 +24,12 @@ tenacity
 openai
 anthropic
 
+# Google Calendar API
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+
 # Async utilities
 nest-asyncio
 

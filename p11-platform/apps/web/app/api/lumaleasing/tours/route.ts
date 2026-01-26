@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/admin';
 import { generateTourCalendarResponse, CalendarLinks } from '@/utils/services/calendar-invite';
 import { sendEmail, EmailAttachment } from '@/utils/services/messaging';
+import { getCalendarConfig, createCalendarEvent } from '@/utils/services/google-calendar';
 
 function extractApiKey(req: NextRequest): string | null {
   const headerKey = req.headers.get('X-API-Key') || req.headers.get('x-api-key');
@@ -129,15 +130,25 @@ export async function POST(req: NextRequest) {
 
     const { 
       slotId, 
+      tourDate,  // YYYY-MM-DD format (for calendar widget)
+      tourTime,  // HH:MM format (for calendar widget)
       leadInfo, // { first_name, last_name, email, phone }
       specialRequests,
       sessionId,
       conversationId,
     } = await req.json();
 
-    if (!slotId || !leadInfo?.email) {
+    // Support both slot-based booking and direct date/time booking
+    if (!leadInfo?.email) {
       return NextResponse.json(
-        { error: 'Slot ID and email are required' },
+        { error: 'Email is required' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    if (!slotId && (!tourDate || !tourTime)) {
+      return NextResponse.json(
+        { error: 'Either slotId or tourDate+tourTime are required' },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -179,20 +190,41 @@ export async function POST(req: NextRequest) {
       website_url?: string 
     } | null = propertyData || null;
 
-    // Verify slot is available
-    const { data: slot } = await supabase
-      .from('tour_slots')
-      .select('*')
-      .eq('id', slotId)
-      .eq('property_id', config.property_id)
-      .eq('is_available', true)
-      .single();
+    // Get slot info (if slot-based booking) or use direct date/time
+    let slot = null;
+    let bookingDate = tourDate;
+    let bookingTime = tourTime;
+    
+    if (slotId) {
+      // Slot-based booking (legacy method)
+      const { data: slotData } = await supabase
+        .from('tour_slots')
+        .select('*')
+        .eq('id', slotId)
+        .eq('property_id', config.property_id)
+        .eq('is_available', true)
+        .single();
 
-    if (!slot || slot.current_bookings >= slot.max_bookings) {
-      return NextResponse.json(
-        { error: 'This time slot is no longer available' },
-        { status: 409, headers: corsHeaders }
-      );
+      if (!slotData || slotData.current_bookings >= slotData.max_bookings) {
+        return NextResponse.json(
+          { error: 'This time slot is no longer available' },
+          { status: 409, headers: corsHeaders }
+        );
+      }
+      
+      slot = slotData;
+      bookingDate = slot.slot_date;
+      bookingTime = slot.start_time;
+    } else {
+      // Direct date/time booking (calendar widget)
+      // Validate date is not in the past
+      const tourDateTime = new Date(`${tourDate}T${tourTime}`);
+      if (tourDateTime < new Date()) {
+        return NextResponse.json(
+          { error: 'Cannot book tours in the past' },
+          { status: 400, headers: corsHeaders }
+        );
+      }
     }
 
     // Get or create lead
@@ -256,10 +288,12 @@ export async function POST(req: NextRequest) {
       .insert({
         property_id: config.property_id,
         lead_id: leadId,
-        slot_id: slotId,
-        scheduled_date: slot.slot_date,
-        scheduled_time: slot.start_time,
-        duration_minutes: (new Date(`1970-01-01T${slot.end_time}Z`).getTime() - new Date(`1970-01-01T${slot.start_time}Z`).getTime()) / 60000,
+        slot_id: slotId || null,
+        scheduled_date: bookingDate,
+        scheduled_time: bookingTime,
+        duration_minutes: slot ? 
+          (new Date(`1970-01-01T${slot.end_time}Z`).getTime() - new Date(`1970-01-01T${slot.start_time}Z`).getTime()) / 60000 :
+          30, // Default 30 min for calendar widget bookings
         special_requests: specialRequests || null,
         source: 'lumaleasing',
         booked_via_conversation_id: conversationId || null,
@@ -276,11 +310,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Increment slot booking count
-    await supabase
-      .from('tour_slots')
-      .update({ current_bookings: slot.current_bookings + 1 })
-      .eq('id', slotId);
+    // Increment slot booking count (only if slot-based booking)
+    if (slotId && slot) {
+      await supabase
+        .from('tour_slots')
+        .update({ current_bookings: slot.current_bookings + 1 })
+        .eq('id', slotId);
+    }
 
     // Create activity on lead
     await supabase
@@ -309,6 +345,43 @@ export async function POST(req: NextRequest) {
       propertyEmail: property?.contact_email || process.env.RESEND_FROM_EMAIL,
       specialRequests: specialRequests
     });
+
+    // Create Google Calendar event (if calendar connected)
+    try {
+      const calendarConfig = await getCalendarConfig(config.property_id)
+      
+      if (calendarConfig && calendarConfig.token_status === 'healthy') {
+        console.log(`[LumaLeasing Tours] Creating Google Calendar event for booking ${booking.id}`)
+        
+        const calendarEvent = await createCalendarEvent(calendarConfig, {
+          propertyName,
+          prospectName: `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim() || 'Guest',
+          prospectEmail: leadInfo.email,
+          prospectPhone: leadInfo.phone,
+          tourDate: booking.scheduled_date,
+          tourTime: booking.scheduled_time,
+          specialRequests: specialRequests,
+          propertyAddress,
+        })
+
+        // Store event ID for two-way sync
+        await supabase
+          .from('calendar_events')
+          .insert({
+            agent_calendar_id: calendarConfig.id,
+            tour_booking_id: booking.id,
+            google_event_id: calendarEvent.eventId,
+            sync_status: 'synced',
+          })
+
+        console.log(`[LumaLeasing Tours] ✅ Created Google Calendar event: ${calendarEvent.eventId}`)
+      } else {
+        console.log(`[LumaLeasing Tours] ⚠️ Google Calendar not connected or unhealthy, skipping event creation`)
+      }
+    } catch (calendarError) {
+      // Calendar event creation is non-blocking - don't fail the booking
+      console.error(`[LumaLeasing Tours] ⚠️ Google Calendar event creation failed (non-blocking):`, calendarError)
+    }
 
     // Send confirmation email with .ics calendar attachment
     const emailSubject = `Your Tour at ${propertyName} is Confirmed! 📅`;
