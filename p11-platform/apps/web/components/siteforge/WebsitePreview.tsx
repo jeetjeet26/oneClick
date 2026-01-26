@@ -367,7 +367,7 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                               {section.type}
                             </span>
                             <span className="text-xs text-gray-500">
-                              ({section.block || section.acfBlock})
+                              ({section.acfBlock})
                             </span>
                           </div>
                           <div className="text-xs text-gray-500">
@@ -427,8 +427,8 @@ export function WebsitePreview({ websiteId }: WebsitePreviewProps) {
                         
                         {/* Visual Preview */}
                         <div className="bg-white dark:bg-gray-900">
-                          <ACFBlockRenderer 
-                            blockType={section.block || section.acfBlock || section.type} 
+                          <ACFBlockRenderer
+                            blockType={section.acfBlock || section.type}
                             content={section.content}
                             designSystem={designSystem}
                           />

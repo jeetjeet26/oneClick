@@ -403,4 +403,3 @@ export function AddCommunityModal({ isOpen, onClose, onSuccess, existingProperti
 
 // Alias for new naming convention
 export const AddPropertyModal = AddCommunityModal
-

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, TrendingUp, TrendingDown, DollarSign, MousePointer, Eye, Target, Download, Clock, CheckCircle, XCircle, History } from 'lucide-react';
 
@@ -270,6 +270,10 @@ export default function PropertyMarketingDashboard({
     );
   }
 
+  if (!data) {
+    return <div className="text-center py-12 text-muted-foreground">No data available</div>;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Controls */}
@@ -283,9 +287,6 @@ export default function PropertyMarketingDashboard({
         
         <div className="flex items-center gap-4">
           <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue />
-            </SelectTrigger>
             <SelectContent>
               <SelectItem value="7d">Last 7 days</SelectItem>
               <SelectItem value="30d">Last 30 days</SelectItem>
@@ -353,7 +354,7 @@ export default function PropertyMarketingDashboard({
             )}
             {importJob.status === 'complete' && (
               <p className="text-sm text-green-700 mt-1">
-                {importJob.campaigns_found} campaigns synced from {importJob.channels?.join(', ') || 'ad platforms'}
+                {importJob.campaigns_found} campaigns synced from ad platforms
               </p>
             )}
           </CardContent>
@@ -401,12 +402,12 @@ export default function PropertyMarketingDashboard({
 
       {/* Account Info */}
       <div className="flex gap-2">
-        {data.property.google_ads_account && (
+        {data?.property?.google_ads_account && (
           <Badge variant="secondary">
             Google Ads: {data.property.google_ads_account}
           </Badge>
         )}
-        {data.property.meta_ads_account && (
+        {data?.property?.meta_ads_account && (
           <Badge variant="secondary">
             Meta Ads: {data.property.meta_ads_account}
           </Badge>

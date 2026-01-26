@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem } from '@/components/ui/select';
 import { Clock, Save, Loader2 } from 'lucide-react';
 
 interface ImportScheduleSettingsProps {
@@ -86,9 +86,6 @@ export default function ImportScheduleSettings({
                 Frequency
               </label>
               <Select value={frequency} onValueChange={(v: any) => setFrequency(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="hourly">Every hour</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
@@ -138,6 +135,7 @@ export default function ImportScheduleSettings({
     </Card>
   );
 }
+
 
 
 

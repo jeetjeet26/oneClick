@@ -124,8 +124,9 @@ export async function GET(req: NextRequest) {
     if (prevScores.length > 0) {
       const prevAvg = prevScores.reduce((sum, s) => sum + s.overallScore, 0) / prevScores.length
       const changePercent = avgOverallScore - prevAvg
+      const direction: 'up' | 'down' | 'stable' = changePercent > 1 ? 'up' : changePercent < -1 ? 'down' : 'stable';
       trend = {
-        direction: changePercent > 1 ? 'up' : changePercent < -1 ? 'down' : 'stable' as const,
+        direction,
         changePercent: Math.round(changePercent * 10) / 10,
       }
     }
@@ -176,6 +177,7 @@ function getScoreBucket(score: number): 'excellent' | 'good' | 'fair' | 'poor' {
   if (score >= 25) return 'fair'
   return 'poor'
 }
+
 
 
 

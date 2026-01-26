@@ -64,7 +64,7 @@ export interface PhotoManifest {
   }
 }
 
-interface Photo {
+export interface Photo {
   id: string
   url: string
   type: 'uploaded' | 'generated' | 'brandforge'
@@ -283,15 +283,8 @@ export class PhotoAgent extends BaseAgent {
             role: 'user',
             content: [
               {
-                type: 'image',
-                source: {
-                  type: 'url',
-                  url: photo.url
-                }
-              },
-              {
                 type: 'text',
-                text: `Analyze this property photo.
+                text: `Analyze this property photo (URL: ${photo.url}).
 
 Brand Context: ${JSON.stringify(brandContext.visualIdentity.photoStyle)}
 
@@ -561,6 +554,7 @@ ${JSON.stringify(data.photoNeeds, null, 2)}
     return assignments
   }
 }
+
 
 
 

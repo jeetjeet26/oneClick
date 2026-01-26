@@ -339,8 +339,8 @@ export class ClaudeNaturalConnector implements NaturalConnector {
     const parsed = NaturalExtractionEnvelopeSchema.safeParse(jsonValue)
     if (!parsed.success) {
       console.error('[claude-natural] Zod validation failed. Raw:', contentText.slice(0, 800))
-      console.error('[claude-natural] Zod errors:', JSON.stringify(parsed.error?.errors, null, 2))
-      const firstError = parsed.error?.errors?.[0]?.message || parsed.error?.message || 'Schema validation failed'
+      console.error('[claude-natural] Zod errors:', JSON.stringify(parsed.error.issues, null, 2))
+      const firstError = parsed.error.issues?.[0]?.message || parsed.error.message || 'Schema validation failed'
       throw new Error(`Failed to parse natural extraction envelope JSON: ${firstError}`)
     }
 

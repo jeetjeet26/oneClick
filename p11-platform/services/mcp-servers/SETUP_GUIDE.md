@@ -460,3 +460,7 @@ SELECT link_property_to_google_ads('Property A', 'account-2');
 
 **Next**: Run Steps 2-4 to link properties and test sync! 🚀
 
+
+
+
+

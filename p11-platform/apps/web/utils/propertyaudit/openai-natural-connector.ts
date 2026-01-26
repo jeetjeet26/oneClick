@@ -353,8 +353,8 @@ export class OpenAINaturalConnector implements NaturalConnector {
     const parsed = NaturalExtractionEnvelopeSchema.safeParse(jsonValue)
     if (!parsed.success) {
       console.error('[openai-natural] Zod validation failed. Raw:', content.slice(0, 800))
-      console.error('[openai-natural] Zod errors:', JSON.stringify(parsed.error?.errors, null, 2))
-      const firstError = parsed.error?.errors?.[0]?.message || parsed.error?.message || 'Schema validation failed'
+      console.error('[openai-natural] Zod errors:', JSON.stringify(parsed.error.issues, null, 2))
+      const firstError = parsed.error.issues?.[0]?.message || parsed.error.message || 'Schema validation failed'
       throw new Error(`Failed to parse natural extraction envelope JSON: ${firstError}`)
     }
 

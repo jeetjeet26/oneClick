@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     // Create runs for each surface with shared batch_id
     const runs: GeoRun[] = []
     const batchId = crypto.randomUUID() // Group related runs together
-    const modelNames = {
+    const modelNames: Record<'openai' | 'claude', string> = {
       openai: process.env.GEO_OPENAI_MODEL || 'gpt-5.2',
       claude: process.env.GEO_CLAUDE_MODEL || 'claude-sonnet-4-20250514',
     }
@@ -63,12 +63,14 @@ export async function POST(req: NextRequest) {
     for (const surface of surfaces) {
       if (surface !== 'openai' && surface !== 'claude') continue
 
+      const typedSurface = surface as 'openai' | 'claude';
+
       const { data: run, error: runError } = await serviceClient
         .from('geo_runs')
         .insert({
           property_id: propertyId,
-          surface,
-          model_name: modelNames[surface],
+          surface: typedSurface,
+          model_name: modelNames[typedSurface],
           status: 'queued',
           query_count: queryCount,
           started_at: new Date().toISOString(),
@@ -139,9 +141,9 @@ export async function POST(req: NextRequest) {
             console.log(`✅ [PropertyAudit] ${run.surface.toUpperCase()} run ${run.id} accepted:`, data)
             return { success: true, run, data }
           })
-          .catch(err => {
+          .catch(async (err) => {
             console.error(`❌ [PropertyAudit] ${run.surface.toUpperCase()} run ${run.id} failed:`, err)
-            serviceClient
+            await serviceClient
               .from('geo_runs')
               .update({ 
                 status: 'failed', 
@@ -149,7 +151,6 @@ export async function POST(req: NextRequest) {
                 finished_at: new Date().toISOString()
               })
               .eq('id', run.id)
-              .execute()
             return { success: false, run, error: err.message }
           })
       })

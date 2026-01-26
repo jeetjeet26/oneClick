@@ -94,10 +94,12 @@ export async function GET(req: NextRequest) {
         const scoreChange = currentScore - prevScore
         const visibilityChange = currentVisibility - prevVisibility
         
+        const direction: 'up' | 'down' | 'stable' = scoreChange > 0.5 ? 'up' : scoreChange < -0.5 ? 'down' : 'stable';
+        
         diff = {
           scoreChange: Math.round(scoreChange * 10) / 10,
           visibilityChange: Math.round(visibilityChange * 10) / 10,
-          direction: scoreChange > 0.5 ? 'up' : scoreChange < -0.5 ? 'down' : 'stable' as const,
+          direction,
         }
       }
 
@@ -159,6 +161,7 @@ function calculateCombinedScore(
     visibilityPct: Math.round(avgVisibility * 10) / 10,
   }
 }
+
 
 
 
