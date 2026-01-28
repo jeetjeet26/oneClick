@@ -54,14 +54,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: membership } = await supabase
-      .from('team_members')
-      .select('id')
-      .eq('profile_id', user.id)
-      .eq('org_id', property.org_id)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, org_id, role')
+      .eq('id', user.id)
       .single()
 
-    if (!membership) {
+    if (!profile || profile.org_id !== property.org_id) {
       return NextResponse.json(
         { error: 'You do not have access to this property' },
         { status: 403 }

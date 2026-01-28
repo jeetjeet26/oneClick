@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Save, Copy, Check, RefreshCw, Eye, Palette, MessageSquare, 
   Clock, UserPlus, Calendar, Code, ExternalLink, Loader2,
-  Settings, Sparkles
+  Settings, Sparkles, CheckCircle, AlertCircle
 } from 'lucide-react';
 import { usePropertyContext } from '../layout/PropertyContext';
 

@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/utils/supabase/admin'
-import { getCalendarConfig, fetchBusyTimes, generateAvailableSlots } from '@/utils/services/google-calendar'
+import { getCalendarConfig, fetchBusyTimes, generateAvailableSlots, type AvailableSlot } from '@/utils/services/google-calendar'
 import { addDays, startOfDay, endOfDay, format, parseISO } from 'date-fns'
 
 function extractApiKey(req: NextRequest): string | null {
