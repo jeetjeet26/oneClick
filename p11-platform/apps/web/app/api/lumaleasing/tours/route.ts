@@ -165,7 +165,6 @@ export async function POST(req: NextRequest) {
           id,
           name,
           address,
-          contact_email,
           website_url
         )
       `)
@@ -186,7 +185,6 @@ export async function POST(req: NextRequest) {
       id: string
       name: string
       address?: { street?: string; full?: string }
-      contact_email?: string
       website_url?: string 
     } | null = propertyData || null;
 
@@ -342,7 +340,7 @@ export async function POST(req: NextRequest) {
       durationMinutes,
       prospectName: `${leadInfo.first_name || ''} ${leadInfo.last_name || ''}`.trim() || 'Guest',
       prospectEmail: leadInfo.email,
-      propertyEmail: property?.contact_email || process.env.RESEND_FROM_EMAIL,
+      propertyEmail: process.env.RESEND_FROM_EMAIL,
       specialRequests: specialRequests
     });
 
