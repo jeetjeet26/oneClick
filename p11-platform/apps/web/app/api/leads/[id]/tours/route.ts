@@ -26,7 +26,7 @@ export async function GET(
   const supabase = createServiceClient()
 
   try {
-    // Fetch all tours for this lead
+    // Fetch all tours from legacy 'tours' table
     const { data: tours, error } = await supabase
       .from('tours')
       .select(`
@@ -44,6 +44,45 @@ export async function GET(
       throw error
     }
 
+    // Also fetch tours from 'tour_bookings' table (LumaLeasing widget bookings)
+    const { data: tourBookings, error: bookingsError } = await supabase
+      .from('tour_bookings')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('scheduled_date', { ascending: true })
+      .order('scheduled_time', { ascending: true })
+
+    if (bookingsError) {
+      console.error('Error fetching tour bookings:', bookingsError)
+    }
+
+    // Transform tour_bookings to match tours format
+    const transformedBookings = (tourBookings || []).map(booking => ({
+      id: booking.id,
+      lead_id: booking.lead_id,
+      property_id: booking.property_id,
+      tour_date: booking.scheduled_date,
+      tour_time: booking.scheduled_time,
+      tour_type: 'in_person' as TourType, // Default, could enhance later
+      status: booking.status as TourStatus,
+      notes: booking.special_requests || booking.internal_notes,
+      assigned_agent: null,
+      created_at: booking.created_at,
+      updated_at: booking.updated_at,
+      source: 'lumaleasing', // Mark as coming from widget
+      duration_minutes: booking.duration_minutes
+    }))
+
+    // Merge both sources
+    const allTours = [...(tours || []), ...transformedBookings]
+    
+    // Sort by date and time
+    allTours.sort((a, b) => {
+      const dateCompare = new Date(a.tour_date).getTime() - new Date(b.tour_date).getTime()
+      if (dateCompare !== 0) return dateCompare
+      return a.tour_time.localeCompare(b.tour_time)
+    })
+
     // Fetch the lead info with property
     const { data: lead } = await supabase
       .from('leads')
@@ -54,7 +93,7 @@ export async function GET(
     // Generate calendar links for each tour (Calendly-style)
     const propertyData = lead?.property ? (Array.isArray(lead.property) ? lead.property[0] : lead.property) : null
     const property: { name?: string; address?: { street?: string; full?: string } } = propertyData || {}
-    const toursWithCalendar = (tours || []).map(tour => {
+    const toursWithCalendar = allTours.map(tour => {
       // Only generate links for upcoming tours
       if (['scheduled', 'confirmed'].includes(tour.status)) {
         const calendarLinks = generateCalendarLinks({
