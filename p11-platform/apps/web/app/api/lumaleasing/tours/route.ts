@@ -359,7 +359,7 @@ export async function POST(req: NextRequest) {
           prospectEmail: leadInfo.email,
           prospectPhone: leadInfo.phone,
           tourDate: booking.scheduled_date,
-          tourTime: booking.scheduled_time,
+          tourTime: booking.scheduled_time.substring(0, 5), // Convert HH:MM:SS to HH:MM
           specialRequests: specialRequests,
           propertyAddress,
         })
