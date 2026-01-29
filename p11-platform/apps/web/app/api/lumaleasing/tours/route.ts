@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
       .insert({
         lead_id: leadId,
         type: 'tour_booked',
-        description: `Tour booked for ${slot.slot_date} at ${slot.start_time}`,
+        description: `Tour booked for ${bookingDate} at ${bookingTime}`,
         metadata: { booking_id: booking.id },
       });
 

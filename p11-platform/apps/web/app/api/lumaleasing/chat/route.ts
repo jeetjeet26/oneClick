@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/admin';
 import { sendEmail } from '@/utils/services/messaging';
 import { syncLeadToCRM } from '@/utils/services/crm-sync';
+import { getCalendarConfig, createCalendarEvent } from '@/utils/services/google-calendar';
 import OpenAI from 'openai';
 
 // Type for extracted conversation data
@@ -29,7 +30,7 @@ async function extractAndProcessConversation(
   sessionId: string | null,
   conversationId: string | null,
   existingLeadId: string | null,
-  config: { properties?: { name?: string; address?: { street?: string } }; widget_name?: string }
+  config: { properties?: { name?: string; address?: { street?: string; full?: string } }; widget_name?: string }
 ): Promise<void> {
   console.log('[LumaLeasing] Starting extraction for property:', propertyId, 'session:', sessionId, 'conversation:', conversationId);
   
@@ -305,6 +306,46 @@ Write a professional CRM note (no bullet points, just flowing text):`;
             .update({ status: 'tour_booked' })
             .eq('id', leadId);
 
+          // Create Google Calendar event (if calendar connected)
+          const propertyName = config.properties?.name || 'our community';
+          const propertyAddress = config.properties?.address?.street || config.properties?.address?.full;
+          
+          try {
+            const calendarConfig = await getCalendarConfig(propertyId);
+            
+            if (calendarConfig && calendarConfig.token_status === 'healthy') {
+              console.log(`[LumaLeasing] Creating Google Calendar event for booking ${booking.id}`);
+              
+              const calendarEvent = await createCalendarEvent(calendarConfig, {
+                propertyName,
+                prospectName: `${leadData?.first_name || ''} ${leadData?.last_name || ''}`.trim() || 'Guest',
+                prospectEmail: leadData?.email || '',
+                prospectPhone: leadData?.phone || undefined,
+                tourDate: tourData.date,
+                tourTime: tourTime,
+                specialRequests: tourData.notes || undefined,
+                propertyAddress,
+              });
+
+              // Store event ID for two-way sync
+              await supabase
+                .from('calendar_events')
+                .insert({
+                  agent_calendar_id: calendarConfig.id,
+                  tour_booking_id: booking.id,
+                  google_event_id: calendarEvent.eventId,
+                  sync_status: 'synced',
+                });
+
+              console.log(`[LumaLeasing] ✅ Created Google Calendar event: ${calendarEvent.eventId}`);
+            } else {
+              console.log(`[LumaLeasing] ⚠️ Google Calendar not connected or unhealthy, skipping event creation`);
+            }
+          } catch (calendarError) {
+            // Calendar event creation is non-blocking - don't fail the extraction
+            console.error(`[LumaLeasing] ⚠️ Google Calendar event creation failed (non-blocking):`, calendarError);
+          }
+
           // Re-score the lead (tour booking adds points)
           try {
             const { data: scoreId } = await supabase.rpc('score_lead', { p_lead_id: leadId });
@@ -332,7 +373,6 @@ Write a professional CRM note (no bullet points, just flowing text):`;
 
           // Send confirmation email if we have an email
           if (leadData?.email) {
-            const propertyName = config.properties?.name || 'our community';
             const formattedDate = new Date(tourData.date + 'T00:00:00').toLocaleDateString('en-US', { 
               weekday: 'long', month: 'long', day: 'numeric' 
             });
@@ -417,7 +457,7 @@ export async function POST(req: NextRequest) {
     const { data: config, error: configError } = await supabase
       .from('lumaleasing_config')
       // Avoid !inner join so an orphaned config row doesn't look like "invalid key"
-      .select('*, properties(id, name, settings)')
+      .select('*, properties(id, name, address, settings)')
       .eq('api_key', apiKey)
       .eq('is_active', true)
       .single();
